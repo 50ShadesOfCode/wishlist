@@ -3,6 +3,8 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'app_snack.dart';
+
 /// Formats a pin for display and as a fallback place label.
 String formatCoords(LatLng p) =>
     '${p.latitude.toStringAsFixed(5)}, ${p.longitude.toStringAsFixed(5)}';
@@ -81,9 +83,7 @@ class _MapPickerState extends State<MapPicker> {
       if (widget.onLocateError != null) {
         widget.onLocateError!(e);
       } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${'location_failed'.tr()}: $e')),
-        );
+        showAppSnack(context, '${'location_failed'.tr()}: $e');
       }
     } finally {
       if (mounted) setState(() => _locating = false);

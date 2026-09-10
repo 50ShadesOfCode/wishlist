@@ -1,6 +1,5 @@
+import 'package:core_ui/core_ui.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:get_it/get_it.dart';
 
 import '../bloc/auth_bloc.dart';
 import 'sign_in_form.dart';
@@ -21,8 +20,7 @@ class SignInPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider.value(
-      value: GetIt.instance<AuthBloc>(),
+    return ProvideBloc<AuthBloc>(
       child: SignInForm(
         onGoSignUp: onGoSignUp,
         onGoReset: onGoReset,

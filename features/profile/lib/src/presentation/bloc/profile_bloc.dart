@@ -3,24 +3,34 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../domain/entities/profile.dart';
-import '../../domain/repositories/profile_repository.dart';
+import '../../domain/usecases/profile_usecases.dart';
 import 'profile_event.dart';
 import 'profile_state.dart';
 
 class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
-  ProfileBloc(this._repo) : super(const ProfileState()) {
+  ProfileBloc({
+    required this._getProfile,
+    required this._updateProfile,
+    required this._uploadAvatar,
+    required this._removeAvatar,
+    required this._isUsernameTaken,
+  }) : super(const ProfileState()) {
     on<ProfileLoaded>(_onLoad);
     on<ProfileUpdated>(_onUpdate);
     on<ProfileAvatarPicked>(_onAvatarPicked);
     on<ProfileAvatarRemoved>(_onAvatarRemoved);
   }
 
-  final ProfileRepository _repo;
+  final GetProfileUseCase _getProfile;
+  final UpdateProfileUseCase _updateProfile;
+  final UploadAvatarUseCase _uploadAvatar;
+  final RemoveAvatarUseCase _removeAvatar;
+  final IsUsernameTakenUseCase _isUsernameTaken;
 
   Future<void> _onLoad(ProfileLoaded e, Emitter<ProfileState> emit) async {
     emit(state.copyWith(isLoading: true, error: null));
     try {
-      final p = await _repo.getProfile(e.userId);
+      final p = await _getProfile(e.userId);
       emit(state.copyWith(profile: p, isLoading: false));
     } on Failure catch (f) {
       emit(state.copyWith(isLoading: false, error: f.message));
@@ -32,11 +42,16 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
   Future<void> _onUpdate(ProfileUpdated e, Emitter<ProfileState> emit) async {
     emit(state.copyWith(isLoading: true, error: null));
     try {
-      if (await _repo.isUsernameTaken(e.profile.username, e.profile.userId)) {
+      if (await _isUsernameTaken(
+        IsUsernameTakenParams(
+          username: e.profile.username,
+          excludeUserId: e.profile.userId,
+        ),
+      )) {
         emit(state.copyWith(isLoading: false, error: 'username_taken'.tr()));
         return;
       }
-      final p = await _repo.updateProfile(e.profile);
+      final p = await _updateProfile(e.profile);
       emit(state.copyWith(profile: p, isLoading: false));
     } on Failure catch (f) {
       emit(state.copyWith(isLoading: false, error: f.message));
@@ -51,10 +66,12 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
   ) async {
     emit(state.copyWith(isLoading: true, error: null));
     try {
-      final url = await _repo.uploadAvatar(e.userId, e.filePath);
+      final url = await _uploadAvatar(
+        UploadAvatarParams(userId: e.userId, filePath: e.filePath),
+      );
       final current =
           state.profile ?? Profile(userId: e.userId, username: 'user');
-      final p = await _repo.updateProfile(current.copyWith(avatarUrl: url));
+      final p = await _updateProfile(current.copyWith(avatarUrl: url));
       emit(state.copyWith(profile: p, isLoading: false));
     } catch (err) {
       // Upload failure keeps the previous avatar; only the error surfaces.
@@ -68,7 +85,7 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
   ) async {
     emit(state.copyWith(isLoading: true, error: null));
     try {
-      final p = await _repo.removeAvatar(e.userId);
+      final p = await _removeAvatar(e.userId);
       emit(state.copyWith(profile: p, isLoading: false));
     } on Failure catch (f) {
       emit(state.copyWith(isLoading: false, error: f.message));

@@ -2,7 +2,6 @@ import 'package:core_ui/core_ui.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
-import 'package:form_builder_validators/form_builder_validators.dart';
 
 /// Change-password screen. Self-contained (local loading/error state,
 /// result via [onChange]); needs no bloc provider.
@@ -53,17 +52,14 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
               FormBuilderTextField(
                 name: 'current',
                 obscureText: true,
-                validator: FormBuilderValidators.required(),
+                validator: AppValidators.requiredField,
                 decoration: InputDecoration(labelText: 'current_password'.tr()),
               ),
               const SizedBox(height: 12),
               FormBuilderTextField(
                 name: 'next',
                 obscureText: true,
-                validator: FormBuilderValidators.compose([
-                  FormBuilderValidators.required(),
-                  FormBuilderValidators.minLength(6),
-                ]),
+                validator: AppValidators.password,
                 decoration: InputDecoration(labelText: 'new_password'.tr()),
               ),
               if (_error != null) ...[

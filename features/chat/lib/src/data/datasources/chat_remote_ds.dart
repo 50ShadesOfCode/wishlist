@@ -94,12 +94,6 @@ class ChatRemoteDataSource {
     }
   }
 
-  Future<void> deleteThread(String chatId) async {
-    final thread = _threads.doc(chatId);
-    await _deleteThreadMessages(thread);
-    await thread.delete();
-  }
-
   /// Deletes a thread's messages in batches so a mid-loop failure cannot
   /// leave a half-deleted thread behind without surfacing an error.
   Future<void> _deleteThreadMessages(

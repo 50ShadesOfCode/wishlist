@@ -1,6 +1,7 @@
 import 'package:auth/auth.dart';
 import 'package:chat/chat.dart';
 import 'package:core/core.dart';
+import 'package:core_ui/core_ui.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
@@ -9,52 +10,18 @@ import 'package:wishlist/wishlist.dart';
 
 import '../di/injection.dart';
 import '../services/sync_service.dart';
+import 'auth_guard.dart';
+import 'chat_navigation.dart';
+import 'home_shell.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
-
-/// Opens the secret chat for [item], creating the thread on first use.
-/// Shared by the wishlist edit page and the following feed.
-Future<void> _openItemChat(
-  BuildContext context,
-  AuthBloc authBloc,
-  WishlistItem item,
-) async {
-  final me = authBloc.state.user?.id;
-  if (me == null) return;
-  try {
-    final thread = await sl<ChatRepository>().getOrCreateThread(
-      wishlistItemId: item.id,
-      wishlistItemName: item.name,
-      ownerId: item.ownerId,
-      participantId: me,
-    );
-    if (context.mounted) {
-      context.push('/chats/${thread.id}');
-    }
-  } catch (e) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('${'chat_open_failed'.tr()}: $e')));
-    }
-  }
-}
 
 GoRouter createRouter(AuthBloc authBloc) {
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/signin',
-    refreshListenable: _AuthListenable(authBloc),
-    redirect: (context, state) {
-      final auth = authBloc.state;
-      final isAuth = auth.status == AuthStatus.authenticated;
-      final loc = state.matchedLocation;
-      final isAuthRoute =
-          loc == '/signin' || loc == '/signup' || loc == '/reset';
-      if (!isAuth && !isAuthRoute) return '/signin';
-      if (isAuth && isAuthRoute) return '/wishlist';
-      return null;
-    },
+    refreshListenable: AuthListenable(authBloc),
+    redirect: (context, state) => authRedirect(authBloc, state),
     routes: [
       GoRoute(
         path: '/signin',
@@ -106,7 +73,7 @@ GoRouter createRouter(AuthBloc authBloc) {
                       ownerId: authBloc.state.user?.id ?? 'local-user',
                       existing: state.extra as WishlistItem?,
                       onDiscuss: (item) =>
-                          _openItemChat(context, authBloc, item),
+                          openItemChat(context, authBloc, item),
                     ),
                   ),
                 ],
@@ -150,23 +117,32 @@ GoRouter createRouter(AuthBloc authBloc) {
                   return SubscriptionsPage(
                     userId: userId,
                     onLoadSubscriptions: () =>
-                        sl<WishlistRepository>().mySubscriptions(userId),
+                        sl<GetSubscriptionsUseCase>().call(userId),
                     onLoadItems: (targetId) =>
-                        sl<WishlistRepository>().getVisibleItems(targetId),
-                    onSubscribe: (targetId) =>
-                        sl<WishlistRepository>().subscribe(userId, targetId),
+                        sl<GetVisibleItemsUseCase>().call(targetId),
+                    onSubscribe: (targetId) => sl<SubscribeUseCase>().call(
+                      SubscriptionParams(
+                        subscriberId: userId,
+                        targetUserId: targetId,
+                      ),
+                    ),
                     onUnsubscribe: (targetId) =>
-                        sl<WishlistRepository>().unsubscribe(userId, targetId),
+                        sl<UnsubscribeUseCase>().call(
+                          SubscriptionParams(
+                            subscriberId: userId,
+                            targetUserId: targetId,
+                          ),
+                        ),
                     resolveName: (id) async {
                       try {
-                        final p = await sl<ProfileRepository>().getProfile(id);
+                        final p = await sl<GetProfileUseCase>().call(id);
                         final name = p?.username.trim();
                         return (name == null || name.isEmpty) ? id : name;
                       } catch (_) {
                         return id;
                       }
                     },
-                    onDiscuss: (item) => _openItemChat(context, authBloc, item),
+                    onDiscuss: (item) => openItemChat(context, authBloc, item),
                   );
                 },
               ),
@@ -195,18 +171,16 @@ GoRouter createRouter(AuthBloc authBloc) {
                     // signed in; if the Firebase delete needs a recent
                     // login, the session is preserved for a retry and the
                     // missing profile row is recreated on next sign-in.
-                    final userId = authBloc.state.user?.id;
-                    if (userId == null) return;
-                    try {
-                      await sl<ProfileRepository>().deleteAccount(userId);
-                    } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Delete failed: $e')),
-                        );
+                      final userId = authBloc.state.user?.id;
+                      if (userId == null) return;
+                      try {
+                        await sl<DeleteProfileUseCase>().call(userId);
+                      } catch (e) {
+                        if (context.mounted) {
+                          showAppSnack(context, 'Delete failed: $e');
+                        }
+                        return;
                       }
-                      return;
-                    }
                     authBloc.add(const DeleteAccountRequested());
                   },
                   onChangePassword: () => context.push('/profile/password'),
@@ -216,9 +190,11 @@ GoRouter createRouter(AuthBloc authBloc) {
                     path: 'password',
                     builder: (_, _) => ChangePasswordPage(
                       onChange: (cur, next) =>
-                          sl<AuthRepository>().changePassword(
-                            currentPassword: cur,
-                            newPassword: next,
+                          sl<ChangePasswordUseCase>().call(
+                            ChangePasswordParams(
+                              currentPassword: cur,
+                              newPassword: next,
+                            ),
                           ),
                     ),
                   ),
@@ -230,52 +206,4 @@ GoRouter createRouter(AuthBloc authBloc) {
       ),
     ],
   );
-}
-
-class HomeShell extends StatelessWidget {
-  const HomeShell({super.key, required this.shell});
-  final StatefulNavigationShell shell;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: shell,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: shell.currentIndex,
-        onDestinationSelected: shell.goBranch,
-        destinations: [
-          NavigationDestination(
-            icon: const Icon(Icons.card_giftcard),
-            label: 'wishlist'.tr(),
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.chat_bubble),
-            label: 'chats'.tr(),
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.people_outline),
-            label: 'following'.tr(),
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.person),
-            label: 'profile'.tr(),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AuthListenable extends ChangeNotifier {
-  _AuthListenable(this._bloc) {
-    _sub = _bloc.stream.listen((_) => notifyListeners());
-  }
-  final AuthBloc _bloc;
-  late final dynamic _sub;
-
-  @override
-  void dispose() {
-    _sub.cancel();
-    super.dispose();
-  }
 }

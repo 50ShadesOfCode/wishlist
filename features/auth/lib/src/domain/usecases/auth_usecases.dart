@@ -18,12 +18,18 @@ class SignInParams {
   final String password;
 }
 
-class SignUpUseCase implements UseCase<AppUser, SignInParams> {
+class SignUpParams {
+  const SignUpParams({required this.email, required this.password});
+  final String email;
+  final String password;
+}
+
+class SignUpUseCase implements UseCase<AppUser, SignUpParams> {
   SignUpUseCase(this._repo);
   final AuthRepository _repo;
 
   @override
-  Future<AppUser> call(SignInParams params) =>
+  Future<AppUser> call(SignUpParams params) =>
       _repo.signUp(email: params.email, password: params.password);
 }
 
@@ -41,4 +47,56 @@ class ResetPasswordUseCase implements UseCase<void, String> {
 
   @override
   Future<void> call(String email) => _repo.sendPasswordReset(email);
+}
+
+class GoogleSignInUseCase implements UseCase<AppUser, NoParams> {
+  GoogleSignInUseCase(this._repo);
+  final AuthRepository _repo;
+
+  @override
+  Future<AppUser> call(NoParams params) => _repo.signInWithGoogle();
+}
+
+class AppleSignInUseCase implements UseCase<AppUser, NoParams> {
+  AppleSignInUseCase(this._repo);
+  final AuthRepository _repo;
+
+  @override
+  Future<AppUser> call(NoParams params) => _repo.signInWithApple();
+}
+
+class DeleteAccountUseCase implements UseCase<void, NoParams> {
+  DeleteAccountUseCase(this._repo);
+  final AuthRepository _repo;
+
+  @override
+  Future<void> call(NoParams params) => _repo.deleteAccount();
+}
+
+class GetCurrentUserUseCase implements UseCase<AppUser?, NoParams> {
+  GetCurrentUserUseCase(this._repo);
+  final AuthRepository _repo;
+
+  @override
+  Future<AppUser?> call(NoParams params) => _repo.currentUser();
+}
+
+class ChangePasswordParams {
+  const ChangePasswordParams({
+    required this.currentPassword,
+    required this.newPassword,
+  });
+  final String currentPassword;
+  final String newPassword;
+}
+
+class ChangePasswordUseCase implements UseCase<void, ChangePasswordParams> {
+  ChangePasswordUseCase(this._repo);
+  final AuthRepository _repo;
+
+  @override
+  Future<void> call(ChangePasswordParams params) => _repo.changePassword(
+    currentPassword: params.currentPassword,
+    newPassword: params.newPassword,
+  );
 }

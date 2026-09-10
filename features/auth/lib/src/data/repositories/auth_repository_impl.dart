@@ -29,10 +29,8 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       final user = await _remote.signUp(email: email, password: password);
       return await _cacheAndReturn(user);
-    } on AuthException catch (e) {
-      throw AuthFailure(e.message);
     } catch (e) {
-      throw ServerFailure(e.toString());
+      mapAuthError(e);
     }
   }
 
@@ -44,10 +42,8 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       final user = await _remote.signIn(email: email, password: password);
       return await _cacheAndReturn(user);
-    } on AuthException catch (e) {
-      throw AuthFailure(e.message);
     } catch (e) {
-      throw ServerFailure(e.toString());
+      mapAuthError(e);
     }
   }
 
@@ -59,10 +55,8 @@ class AuthRepositoryImpl implements AuthRepository {
     } on AuthCancelledException {
       // User dismissed the picker: silent, never an error snackbar.
       throw const AuthCancelledFailure();
-    } on AuthException catch (e) {
-      throw AuthFailure(e.message);
     } catch (e) {
-      throw ServerFailure(e.toString());
+      mapAuthError(e);
     }
   }
 
@@ -74,10 +68,8 @@ class AuthRepositoryImpl implements AuthRepository {
     } on AuthCancelledException {
       // User dismissed the picker: silent, never an error snackbar.
       throw const AuthCancelledFailure();
-    } on AuthException catch (e) {
-      throw AuthFailure(e.message);
     } catch (e) {
-      throw ServerFailure(e.toString());
+      mapAuthError(e);
     }
   }
 
@@ -86,8 +78,8 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       await _remote.signOut();
       await _local.clear();
-    } on AuthException catch (e) {
-      throw AuthFailure(e.message);
+    } catch (e) {
+      mapAuthError(e);
     }
   }
 
@@ -95,10 +87,8 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<void> sendPasswordReset(String email) async {
     try {
       await _remote.sendPasswordReset(email);
-    } on AuthException catch (e) {
-      throw AuthFailure(e.message);
     } catch (e) {
-      throw ServerFailure(e.toString());
+      mapAuthError(e);
     }
   }
 
@@ -112,10 +102,8 @@ class AuthRepositoryImpl implements AuthRepository {
         currentPassword: currentPassword,
         newPassword: newPassword,
       );
-    } on AuthException catch (e) {
-      throw AuthFailure(e.message);
     } catch (e) {
-      throw ServerFailure(e.toString());
+      mapAuthError(e);
     }
   }
 
@@ -124,15 +112,12 @@ class AuthRepositoryImpl implements AuthRepository {
       _remote.currentUser() ?? _local.cachedUser();
 
   @override
-  Stream<AppUser?> authStateChanges() => _remote.authStateChanges();
-
-  @override
   Future<void> deleteAccount() async {
     try {
       await _remote.deleteAccount();
       await _local.clear();
-    } on AuthException catch (e) {
-      throw AuthFailure(e.message);
+    } catch (e) {
+      mapAuthError(e);
     }
   }
 }

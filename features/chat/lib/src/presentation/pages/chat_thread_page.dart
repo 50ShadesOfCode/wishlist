@@ -1,6 +1,5 @@
+import 'package:core_ui/core_ui.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:get_it/get_it.dart';
 
 import '../bloc/chat_bloc.dart';
 import 'chat_thread_view.dart';
@@ -19,8 +18,7 @@ class ChatThreadPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider.value(
-      value: GetIt.instance<ChatBloc>(),
+    return ProvideBloc<ChatBloc>(
       child: ChatThreadView(chatId: chatId, currentUserId: currentUserId),
     );
   }

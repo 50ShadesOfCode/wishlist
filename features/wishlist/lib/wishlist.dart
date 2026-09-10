@@ -1,14 +1,10 @@
-export 'src/data/datasources/wishlist_remote_ds.dart';
-export 'src/data/models/wishlist_item_model.dart';
-export 'src/data/repositories/wishlist_repository_impl.dart';
+export 'src/di/wishlist_module.dart';
 export 'src/domain/entities/wishlist_item.dart';
 export 'src/domain/repositories/wishlist_repository.dart';
 export 'src/domain/usecases/wishlist_usecases.dart';
 export 'src/presentation/bloc/wishlist_bloc.dart';
 export 'src/presentation/bloc/wishlist_event.dart';
 export 'src/presentation/bloc/wishlist_state.dart';
-export 'src/presentation/pages/wishlist_edit_form.dart';
 export 'src/presentation/pages/wishlist_edit_page.dart';
 export 'src/presentation/pages/wishlist_list_page.dart';
-export 'src/presentation/pages/wishlist_list_view.dart';
 export 'src/presentation/pages/subscriptions_page.dart';

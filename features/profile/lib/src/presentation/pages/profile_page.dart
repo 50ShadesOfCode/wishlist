@@ -1,6 +1,5 @@
+import 'package:core_ui/core_ui.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:get_it/get_it.dart';
 
 import '../bloc/profile_bloc.dart';
 import 'profile_form.dart';
@@ -33,8 +32,7 @@ class ProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider.value(
-      value: GetIt.instance<ProfileBloc>(),
+    return ProvideBloc<ProfileBloc>(
       child: ProfileForm(
         userId: userId,
         onLogout: onLogout,

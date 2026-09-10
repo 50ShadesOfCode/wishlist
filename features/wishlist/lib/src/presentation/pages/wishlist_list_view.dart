@@ -7,6 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/wishlist_bloc.dart';
 import '../bloc/wishlist_event.dart';
 import '../bloc/wishlist_state.dart';
+import '../widgets/sync_banner.dart';
 
 /// Wishlist screen UI. Requires a [WishlistBloc] above it in the tree
 /// (provided by [WishlistListPage]).
@@ -14,22 +15,15 @@ class WishlistListView extends StatefulWidget {
   const WishlistListView({
     super.key,
     required this.ownerId,
-    this.isOwner = true,
     this.onOpenItem,
     this.onAdd,
-    this.onSubscribe,
     this.outbox,
     this.onSyncNow,
   });
 
   final String ownerId;
-  final bool isOwner;
   final void Function(String itemId)? onOpenItem;
   final VoidCallback? onAdd;
-
-  /// Called when a viewer taps subscribe on someone else's list. Null hides
-  /// any subscribe affordance handling (button falls back to a snackbar).
-  final Future<void> Function()? onSubscribe;
 
   /// Offline outbox (pending count drives the sync banner) and manual sync.
   /// Both null hides the banner. Wired by the app router.
@@ -57,42 +51,11 @@ class _WishlistListViewState extends State<WishlistListView> {
     }
   }
 
-  Future<void> _subscribe() async {
-    final subscribe = widget.onSubscribe;
-    if (subscribe == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('subscribed'.tr())));
-      return;
-    }
-    try {
-      await subscribe();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('subscribed'.tr())));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('${'subscribe_failed'.tr()}: $e')));
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.isOwner ? 'my_wishlist'.tr() : 'wishlist'.tr()),
-        actions: [
-          if (!widget.isOwner)
-            IconButton(
-              icon: const Icon(Icons.notifications_outlined),
-              tooltip: 'subscribe_updates'.tr(),
-              onPressed: _subscribe,
-            ),
-        ],
-      ),
-      floatingActionButton: widget.isOwner && widget.onAdd != null
+      appBar: AppBar(title: Text('my_wishlist'.tr())),
+      floatingActionButton: widget.onAdd != null
           ? FloatingActionButton(
               onPressed: widget.onAdd,
               child: const Icon(Icons.add),
@@ -100,7 +63,7 @@ class _WishlistListViewState extends State<WishlistListView> {
           : null,
       body: Column(
         children: [
-          _SyncBanner(outbox: widget.outbox, onSyncNow: widget.onSyncNow),
+          SyncBanner(outbox: widget.outbox, onSyncNow: widget.onSyncNow),
           Expanded(
             child: BlocBuilder<WishlistBloc, WishlistState>(
               builder: (context, state) {
@@ -182,42 +145,6 @@ class _WishlistListViewState extends State<WishlistListView> {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// Pending-offline-mutations banner with a manual "sync now" action.
-/// Hidden when no outbox is wired or nothing is pending.
-class _SyncBanner extends StatelessWidget {
-  const _SyncBanner({required this.outbox, required this.onSyncNow});
-
-  final OutboxService? outbox;
-  final Future<void> Function()? onSyncNow;
-
-  @override
-  Widget build(BuildContext context) {
-    final box = outbox;
-    final sync = onSyncNow;
-    if (box == null || sync == null) return const SizedBox.shrink();
-    return ListenableBuilder(
-      listenable: box,
-      builder: (context, _) {
-        final n = box.pending;
-        if (n == 0) return const SizedBox.shrink();
-        return Container(
-          width: double.infinity,
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: [
-              const Icon(Icons.cloud_off_outlined, size: 18),
-              const SizedBox(width: 8),
-              Expanded(child: Text('${'pending_sync'.tr()} ($n)')),
-              TextButton(onPressed: () => sync(), child: Text('sync_now'.tr())),
-            ],
-          ),
-        );
-      },
     );
   }
 }

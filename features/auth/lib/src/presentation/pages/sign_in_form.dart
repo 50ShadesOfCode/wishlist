@@ -3,7 +3,6 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
-import 'package:form_builder_validators/form_builder_validators.dart';
 
 import '../bloc/auth_bloc.dart';
 import '../bloc/auth_event.dart';
@@ -35,19 +34,15 @@ class _SignInFormState extends State<SignInForm> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text('sign_in'.tr())),
-      body: BlocConsumer<AuthBloc, AuthState>(
-        listenWhen: (prev, curr) =>
-            prev.error != curr.error && curr.error != null,
-        listener: (context, s) {
-          if (s.status == AuthStatus.authenticated) widget.onSuccess?.call();
-          if (s.error != null) {
-            ScaffoldMessenger.of(context)
-                .showSnackBar(SnackBar(content: Text(s.error!)));
-            // Clear so rebuilds never re-fire the same snackbar.
-            BlocProvider.of<AuthBloc>(context).add(const AuthErrorCleared());
-          }
-        },
-        builder: (context, state) {
+      body: AppErrorListener<AuthBloc, AuthState>(
+        errorOf: (s) => s.error,
+        child: BlocConsumer<AuthBloc, AuthState>(
+          listener: (context, s) {
+            if (s.status == AuthStatus.authenticated) {
+              widget.onSuccess?.call();
+            }
+          },
+          builder: (context, state) {
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: FormBuilder(
@@ -60,16 +55,13 @@ class _SignInFormState extends State<SignInForm> {
                     label: 'email'.tr(),
                     hint: 'you@mail.com',
                     keyboardType: TextInputType.emailAddress,
-                    validators: FormBuilderValidators.compose([
-                      FormBuilderValidators.required(),
-                      FormBuilderValidators.email(),
-                    ]),
+                    validators: AppValidators.email,
                   ),
                   const SizedBox(height: 12),
                   FormBuilderTextField(
                     name: 'password',
                     obscureText: _obscure,
-                    validator: FormBuilderValidators.required(),
+                    validator: AppValidators.requiredField,
                     decoration: InputDecoration(
                       labelText: 'password'.tr(),
                       suffixIcon: IconButton(
@@ -127,6 +119,7 @@ class _SignInFormState extends State<SignInForm> {
             ),
           );
         },
+      ),
       ),
     );
   }

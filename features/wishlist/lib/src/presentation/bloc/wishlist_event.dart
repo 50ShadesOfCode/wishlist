@@ -9,9 +9,11 @@ abstract class WishlistEvent extends Equatable {
 }
 
 class WishlistLoad extends WishlistEvent {
-  const WishlistLoad(this.ownerId, {this.visibleOnly = false});
+  const WishlistLoad(this.ownerId);
   final String ownerId;
-  final bool visibleOnly;
+
+  @override
+  List<Object?> get props => [ownerId];
 }
 
 class WishlistAdd extends WishlistEvent {
@@ -30,14 +32,10 @@ class WishlistDelete extends WishlistEvent {
 }
 
 class WishlistToggleHide extends WishlistEvent {
-  const WishlistToggleHide(this.itemId, this.hidden, {required this.ownerId});
+  const WishlistToggleHide(this.itemId, this.hidden);
   final String itemId;
   final bool hidden;
 
-  /// Owner to reload after the toggle. Carried explicitly because the list
-  /// may be empty (deriving it from `state.items.first` is unreliable).
-  final String ownerId;
-
   @override
-  List<Object?> get props => [itemId, hidden, ownerId];
+  List<Object?> get props => [itemId, hidden];
 }

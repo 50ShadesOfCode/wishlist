@@ -4,7 +4,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wishlist_app/firebase_options.dart';
 
@@ -21,11 +20,13 @@ Future<void> main() async {
   } catch (_) {
     // .env is optional for analyze / tests.
   }
-  final supabaseUrl = dotenv.env['SUPABASE_URL']?.isNotEmpty == true
-      ? dotenv.env['SUPABASE_URL']!
+  final supabaseUrl =
+      dotenv.env[AppConstants.supabaseUrlKey]?.isNotEmpty == true
+      ? dotenv.env[AppConstants.supabaseUrlKey]!
       : 'https://placeholder.supabase.co';
-  final supabaseKey = dotenv.env['SUPABASE_ANON_KEY']?.isNotEmpty == true
-      ? dotenv.env['SUPABASE_ANON_KEY']!
+  final supabaseKey =
+      dotenv.env[AppConstants.supabaseAnonKey]?.isNotEmpty == true
+      ? dotenv.env[AppConstants.supabaseAnonKey]!
       : 'placeholder-anon-key';
 
   await Hive.initFlutter();
@@ -68,8 +69,7 @@ Future<void> main() async {
 
 Future<Locale?> _savedLocale() async {
   try {
-    final prefs = await SharedPreferences.getInstance();
-    final code = prefs.getString(PrefsService.localeKey);
+    final code = sl<PrefsService>().localeCode;
     return code == null ? null : Locale(code);
   } catch (_) {
     return null;

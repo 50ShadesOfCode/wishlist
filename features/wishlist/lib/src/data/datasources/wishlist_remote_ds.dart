@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:core/core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -19,16 +17,6 @@ class WishlistRemoteDataSource {
     return (rows as List).map((e) => WishlistItemModel.fromJson(e)).toList();
   }
 
-  Future<List<WishlistItemModel>> fetchVisible(String ownerId) async {
-    final rows = await _client
-        .from(AppConstants.wishlistItemsTable)
-        .select()
-        .eq('owner_id', ownerId)
-        .eq('is_hidden', false)
-        .order('created_at');
-    return (rows as List).map((e) => WishlistItemModel.fromJson(e)).toList();
-  }
-
   Future<WishlistItemModel?> fetchById(String itemId) async {
     final row = await _client
         .from(AppConstants.wishlistItemsTable)
@@ -38,14 +26,6 @@ class WishlistRemoteDataSource {
     if (row == null) return null;
     return WishlistItemModel.fromJson(row);
   }
-
-  /// Live updates for one owner's items (Supabase Realtime).
-  Stream<List<WishlistItemModel>> watchMine(String ownerId) => _client
-      .from(AppConstants.wishlistItemsTable)
-      .stream(primaryKey: ['id'])
-      .eq('owner_id', ownerId)
-      .order('created_at')
-      .map((rows) => rows.map(WishlistItemModel.fromJson).toList());
 
   Future<WishlistItemModel> insert(WishlistItemModel item) async {
     final row = await _client
@@ -80,32 +60,20 @@ class WishlistRemoteDataSource {
     required String ownerId,
     required String itemId,
     required String filePath,
-  }) async {
-    final ext = safeFileExtension(filePath);
-    final fileName = '${DateTime.now().microsecondsSinceEpoch}.$ext';
-    final storagePath = '$ownerId/items/$itemId/$fileName';
-    await _client.storage
-        .from(AppConstants.avatarsBucket)
-        .upload(
-          storagePath,
-          File(filePath),
-          fileOptions: const FileOptions(upsert: true),
-        );
-    return _client.storage
-        .from(AppConstants.avatarsBucket)
-        .getPublicUrl(storagePath);
-  }
+  }) => uploadToBucket(
+    _client,
+    bucket: AppConstants.avatarsBucket,
+    path: '$ownerId/items/$itemId/${storageFileName(filePath)}',
+    filePath: filePath,
+  );
 
   /// Best-effort removal of an uploaded image by its public URL. No-op for
   /// non-bucket URLs (e.g. legacy entries) so cleanup never fails a delete.
-  Future<void> deleteImageByUrl(String imageUrl) async {
-    final marker = '/${AppConstants.avatarsBucket}/';
-    final idx = imageUrl.indexOf(marker);
-    if (idx < 0) return;
-    final path = imageUrl.substring(idx + marker.length).split('?').first;
-    if (path.isEmpty) return;
-    await _client.storage.from(AppConstants.avatarsBucket).remove([path]);
-  }
+  Future<void> deleteImageByUrl(String imageUrl) => removeByUrls(
+    _client,
+    bucket: AppConstants.avatarsBucket,
+    imageUrls: [imageUrl],
+  );
 
   Future<void> subscribe(String subscriberId, String targetUserId) => _client
       .from(AppConstants.subscriptionsTable)

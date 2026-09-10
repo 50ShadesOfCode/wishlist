@@ -48,11 +48,6 @@ class HiveCacheService {
     return box.keys.toList();
   }
 
-  Future<void> clear() async {
-    final box = await _open();
-    await box.clear();
-  }
-
   /// Opens and clears a box by name (used at sign-out to wipe per-user
   /// caches without holding a service instance).
   static Future<void> clearBox(String boxName) async {

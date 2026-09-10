@@ -79,10 +79,9 @@ class _WishlistAppState extends State<WishlistApp> {
     _profileEnsuredFor = user.id;
     try {
       await sl<SupabaseSessionBridge>().ensureSession();
-      final repo = sl<ProfileRepository>();
-      final existing = await repo.getProfile(user.id);
+      final existing = await sl<GetProfileUseCase>().call(user.id);
       if (existing == null) {
-        await repo.updateProfile(
+        await sl<UpdateProfileUseCase>().call(
           Profile(
             userId: user.id,
             username: user.displayName ?? user.email.split('@').first,

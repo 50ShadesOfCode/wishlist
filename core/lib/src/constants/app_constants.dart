@@ -2,7 +2,6 @@ class AppConstants {
   static const supabaseUrlKey = 'SUPABASE_URL';
   static const supabaseAnonKey = 'SUPABASE_ANON_KEY';
 
-  static const usersTable = 'users';
   static const profilesTable = 'profiles';
   static const wishlistItemsTable = 'wishlist_items';
   static const subscriptionsTable = 'subscriptions';
@@ -16,6 +15,4 @@ class AppConstants {
   static const wishlistCacheBox = 'wishlist_cache';
   static const chatSeenBox = 'chat_seen';
   static const outboxBox = 'outbox';
-
-  static const defaultPageSize = 20;
 }

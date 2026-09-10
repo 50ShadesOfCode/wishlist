@@ -1,57 +1,28 @@
 import 'package:core/core.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../domain/entities/wishlist_item.dart';
 import '../../domain/repositories/wishlist_repository.dart';
 import '../datasources/wishlist_remote_ds.dart';
 import '../models/wishlist_item_model.dart';
+import 'wishlist_media_store.dart';
 
 class WishlistRepositoryImpl implements WishlistRepository {
   WishlistRepositoryImpl(
     this._remote,
     this._cache,
-    this._notifications,
+    NotificationService notifications,
     this._network,
     this._outbox,
-  );
+  ) : _media = WishlistMediaStore(_remote, notifications);
 
   final WishlistRemoteDataSource _remote;
   final HiveCacheService _cache;
-  final FlutterLocalNotificationsPlugin _notifications;
+  final WishlistMediaStore _media;
   final NetworkInfo _network;
   final OutboxService _outbox;
 
-  /// Maps backend errors to the [Failure] taxonomy. Unknown/programming
-  /// errors are wrapped as [ServerFailure] so blocs can rely on
-  /// `on Failure` instead of formatting raw exceptions.
-  Never _asFailure(Object e) {
-    if (e is Failure) throw e;
-    if (e is PostgrestException) throw ServerFailure(e.message);
-    if (e is StorageException) throw ServerFailure(e.message);
-    throw ServerFailure(e.toString());
-  }
-
   /// Mutations check connectivity inline so offline writes can be queued
   /// to the outbox instead of failing.
-
-  Future<void> _notifyNewItem(WishlistItem item) async {
-    await _notifications.show(
-      // Stable per item (no collisions/overwrites across restarts).
-      id: 'item:${item.id}'.hashCode & 0x7fffffff,
-      title: 'New wishlist item',
-      body: '${item.name} was added',
-      payload: 'item:${item.id}',
-      notificationDetails: const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'wishlist',
-          'Wishlist updates',
-          importance: Importance.high,
-        ),
-        iOS: DarwinNotificationDetails(),
-      ),
-    );
-  }
 
   String _scopedKey(String ownerId, String id) => '$ownerId::$id';
 
@@ -72,26 +43,25 @@ class WishlistRepositoryImpl implements WishlistRepository {
   }
 
   @override
-  Future<List<WishlistItem>> getMyItems(String ownerId) async {
-    try {
+  Future<List<WishlistItem>> getMyItems(String ownerId) => cachedRead(
+    network: _network,
+    remote: () async {
       final items = await _remote.fetchMine(ownerId);
       await _cache.putAll({
         for (final i in items) _scopedKey(ownerId, i.id): i.toJson(),
       });
       return items;
-    } catch (e) {
-      // Offline → Hive fallback. Online → surface the real failure instead
-      // of silently serving stale cache (which hid RLS/schema bugs).
-      if (await _network.isConnected) _asFailure(e);
+    },
+    // Filter by the row's owner_id (not just the key) so a signed-in user
+    // never sees another user's cached items.
+    fallback: () async {
       final cached = await _cache.getAll();
-      // Filter by the row's owner_id (not just the key) so a signed-in user
-      // never sees another user's cached items.
       return cached
           .where((j) => _belongsTo(j, ownerId))
           .map(WishlistItemModel.fromJson)
           .toList();
-    }
-  }
+    },
+  );
 
   @override
   Future<List<WishlistItem>> getVisibleItems(String ownerId) async {
@@ -100,14 +70,20 @@ class WishlistRepositoryImpl implements WishlistRepository {
   }
 
   @override
-  Future<WishlistItem?> getItemById(String itemId) => _remote.fetchById(itemId);
+  Future<WishlistItem?> getItemById(String itemId) async {
+    try {
+      return await _remote.fetchById(itemId);
+    } catch (e) {
+      mapDataError(e);
+    }
+  }
 
   @override
   Future<String> uploadItemImage({
     required String ownerId,
     required String itemId,
     required String filePath,
-  }) => _remote.uploadItemImage(
+  }) => _media.uploadItemImage(
     ownerId: ownerId,
     itemId: itemId,
     filePath: filePath,
@@ -115,83 +91,59 @@ class WishlistRepositoryImpl implements WishlistRepository {
 
   @override
   Future<void> deleteImageByUrl(String imageUrl) =>
-      _remote.deleteImageByUrl(imageUrl);
-
-  /// Uploads any device-local image paths, returning public URLs.
-  /// [uploaded] collects the new URLs so callers can roll them back if a
-  /// later step (e.g. row insert) fails.
-  Future<List<String>> _resolveImageUrls(
-    WishlistItem item,
-    List<String> uploaded,
-  ) async {
-    final urls = <String>[];
-    for (final path in item.imageUrls) {
-      if (isRemoteUrl(path)) {
-        urls.add(path);
-        continue;
-      }
-      final url = await uploadItemImage(
-        ownerId: item.ownerId,
-        itemId: item.id,
-        filePath: path,
-      );
-      uploaded.add(url);
-      urls.add(url);
-    }
-    return urls;
-  }
-
-  Future<void> _deleteUrlsBestEffort(Iterable<String> urls) async {
-    for (final url in urls) {
-      try {
-        await deleteImageByUrl(url);
-      } catch (_) {
-        // Cleanup must never fail the user-facing operation.
-      }
-    }
-  }
+      _media.deleteImageByUrl(imageUrl);
 
   @override
   Future<WishlistItem> addItem(WishlistItem item) async {
     final model = WishlistItemModel.fromEntity(item);
-    if (!await _network.isConnected) {
-      // Offline: persist to cache now, queue the insert for sync. Local
-      // image paths are kept as-is and uploaded during replay.
-      await _cache.put(_scopedKey(item.ownerId, item.id), model.toJson());
-      await _outbox.enqueue('wishlist_add', model.toJson());
+    // Offline: persist to cache now, queue the insert for sync. Local
+    // image paths are kept as-is and uploaded during replay.
+    if (await enqueueOfflineWrite(
+      network: _network,
+      outbox: _outbox,
+      kind: OutboxKind.wishlistAdd,
+      payload: model.toJson(),
+      writeCache: () =>
+          _cache.put(_scopedKey(item.ownerId, item.id), model.toJson()),
+    )) {
       return item;
     }
     final uploaded = <String>[];
     try {
-      final urls = await _resolveImageUrls(item, uploaded);
+      final urls = await _media.resolveImageUrls(item, uploaded);
       final saved = await _remote.insert(
         WishlistItemModel.fromEntity(item.copyWith(imageUrls: urls)),
       );
       await _cache.put(_scopedKey(saved.ownerId, saved.id), saved.toJson());
       try {
         // Local reminder only: never fail the save over a notification.
-        await _notifyNewItem(saved);
+        await _media.notifyNewItem(saved);
       } catch (_) {
         // ignore notification failures
       }
       return saved;
     } catch (e) {
-      await _deleteUrlsBestEffort(uploaded);
-      _asFailure(e);
+      await _media.deleteUrlsBestEffort(uploaded);
+      mapDataError(e);
     }
   }
 
   @override
   Future<WishlistItem> updateItem(WishlistItem item) async {
     final model = WishlistItemModel.fromEntity(item);
-    if (!await _network.isConnected) {
-      await _cache.put(_scopedKey(item.ownerId, item.id), model.toJson());
-      await _outbox.enqueue('wishlist_update', model.toJson());
+    if (await enqueueOfflineWrite(
+      network: _network,
+      outbox: _outbox,
+      kind: OutboxKind.wishlistUpdate,
+      payload: model.toJson(),
+      writeCache: () =>
+          _cache.put(_scopedKey(item.ownerId, item.id), model.toJson()),
+    )) {
       return item;
     }
     final uploaded = <String>[];
     try {
-      final urls = await _resolveImageUrls(item, uploaded);
+      final urls = await _media.resolveImageUrls(item, uploaded);
       final saved = await _remote.update(
         WishlistItemModel.fromEntity(item.copyWith(imageUrls: urls)),
       );
@@ -203,30 +155,38 @@ class WishlistRepositoryImpl implements WishlistRepository {
           final removed = previous.imageUrls
               .where(isRemoteUrl)
               .where((u) => !urls.contains(u));
-          await _deleteUrlsBestEffort(removed);
+          await _media.deleteUrlsBestEffort(removed);
         }
       } catch (_) {
         // ignore diff cleanup failures
       }
       return saved;
     } catch (e) {
-      await _deleteUrlsBestEffort(uploaded);
-      _asFailure(e);
+      await _media.deleteUrlsBestEffort(uploaded);
+      mapDataError(e);
     }
   }
 
   @override
   Future<void> deleteItem(String itemId) async {
-    if (!await _network.isConnected) {
-      // Offline: drop from cache now, queue the delete for sync.
+    // Offline: drop from cache now, queue the delete for sync.
+    Future<void> dropFromCache() async {
       final found = await _findCached(itemId);
       if (found != null) await _cache.delete(found.$1);
-      await _outbox.enqueue('wishlist_delete', {'id': itemId});
+    }
+
+    if (await enqueueOfflineWrite(
+      network: _network,
+      outbox: _outbox,
+      kind: OutboxKind.wishlistDelete,
+      payload: {'id': itemId},
+      writeCache: dropFromCache,
+    )) {
       return;
     }
     // NOTE: this deletes only the Supabase row + local cache. Callers must
-    // also delete the item's Firestore chats (wired in WishlistBloc via the
-    // injected deleteChatsForItem hook) or chats will leak.
+    // also delete the item's Firestore chats (owned by DeleteItemUseCase
+    // via its injected hook) or chats will leak.
     List<String> imageUrls = const [];
     try {
       final previous = await _remote.fetchById(itemId);
@@ -237,21 +197,22 @@ class WishlistRepositoryImpl implements WishlistRepository {
     try {
       await _remote.delete(itemId);
     } catch (e) {
-      _asFailure(e);
+      mapDataError(e);
     }
     final found = await _findCached(itemId);
     if (found != null) await _cache.delete(found.$1);
-    await _deleteUrlsBestEffort(imageUrls);
+    await _media.deleteUrlsBestEffort(imageUrls);
   }
 
   @override
   Future<void> setHidden(String itemId, bool hidden) async {
-    if (!await _network.isConnected) throw const NetworkFailure();
     final found = await _findCached(itemId);
     if (found != null) {
+      // updateItem queues offline, so the cached path works without network.
       await updateItem(found.$2.copyWith(isHidden: hidden));
       return;
     }
+    if (!await _network.isConnected) throw const NetworkFailure();
     // Cache miss (fresh install, other device): fetch from remote instead of
     // silently doing nothing.
     final remote = await _remote.fetchById(itemId);
@@ -263,33 +224,43 @@ class WishlistRepositoryImpl implements WishlistRepository {
 
   @override
   Future<void> subscribe(String subscriberId, String targetUserId) async {
-    if (!await _network.isConnected) {
-      await _outbox.enqueue('wishlist_subscribe', {
+    if (await enqueueOfflineWrite(
+      network: _network,
+      outbox: _outbox,
+      kind: OutboxKind.wishlistSubscribe,
+      payload: {
         'subscriber_id': subscriberId,
         'target_user_id': targetUserId,
-      });
+      },
+      writeCache: () async {},
+    )) {
       return;
     }
     try {
       await _remote.subscribe(subscriberId, targetUserId);
     } catch (e) {
-      _asFailure(e);
+      mapDataError(e);
     }
   }
 
   @override
   Future<void> unsubscribe(String subscriberId, String targetUserId) async {
-    if (!await _network.isConnected) {
-      await _outbox.enqueue('wishlist_unsubscribe', {
+    if (await enqueueOfflineWrite(
+      network: _network,
+      outbox: _outbox,
+      kind: OutboxKind.wishlistUnsubscribe,
+      payload: {
         'subscriber_id': subscriberId,
         'target_user_id': targetUserId,
-      });
+      },
+      writeCache: () async {},
+    )) {
       return;
     }
     try {
       await _remote.unsubscribe(subscriberId, targetUserId);
     } catch (e) {
-      _asFailure(e);
+      mapDataError(e);
     }
   }
 
@@ -299,11 +270,7 @@ class WishlistRepositoryImpl implements WishlistRepository {
     try {
       return await _remote.fetchSubscriptions(subscriberId);
     } catch (e) {
-      _asFailure(e);
+      mapDataError(e);
     }
   }
-
-  @override
-  Stream<List<WishlistItem>> watchUserItems(String ownerId) =>
-      _remote.watchMine(ownerId);
 }

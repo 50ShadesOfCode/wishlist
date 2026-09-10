@@ -12,6 +12,5 @@ abstract class AuthRepository {
     required String newPassword,
   });
   Future<AppUser?> currentUser();
-  Stream<AppUser?> authStateChanges();
   Future<void> deleteAccount();
 }

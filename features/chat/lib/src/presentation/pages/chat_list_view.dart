@@ -1,3 +1,4 @@
+import 'package:core_ui/core_ui.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -6,7 +7,6 @@ import '../../utils/thread_label.dart';
 import '../bloc/chat_bloc.dart';
 import '../bloc/chat_event.dart';
 import '../bloc/chat_state.dart';
-import '../widgets/chat_error_listener.dart';
 
 /// Chat thread list UI. Requires a [ChatBloc] above it in the tree
 /// (provided by [ChatListPage]).
@@ -41,9 +41,13 @@ class _ChatListViewState extends State<ChatListView> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text('secret_chats'.tr())),
-      body: ChatErrorListener(
+      body: AppErrorListener<ChatBloc, ChatState>(
+        errorOf: (s) => s.error,
         child: BlocBuilder<ChatBloc, ChatState>(
           builder: (context, state) {
+            if (state.isLoading && state.threads.isEmpty) {
+              return const Center(child: CircularProgressIndicator());
+            }
             if (state.threads.isEmpty) {
               return Center(child: Text('no_chats'.tr()));
             }

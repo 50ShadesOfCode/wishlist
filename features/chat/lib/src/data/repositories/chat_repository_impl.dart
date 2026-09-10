@@ -1,6 +1,4 @@
 import 'package:core/core.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../domain/entities/chat_message.dart';
 import '../../domain/repositories/chat_repository.dart';
@@ -11,27 +9,26 @@ import '../models/chat_models.dart';
 class ChatRepositoryImpl implements ChatRepository {
   ChatRepositoryImpl(
     this._remote, {
-    this._photoStorage,
+    required this._photoStorage,
+    required this._network,
     HiveCacheService? seenCache,
   }) : _seenCache = seenCache ?? HiveCacheService(AppConstants.chatSeenBox);
 
   final ChatRemoteDataSource _remote;
-  final ChatPhotoStorage? _photoStorage;
+  final ChatPhotoStorage _photoStorage;
+
+  /// Offline contract, unified with wishlist/profile: mutations throw
+  /// [NetworkFailure] when offline instead of leaking raw backend errors.
+  /// (Watch streams are exempt — Firestore serves those from local cache.)
+  final NetworkInfo _network;
+
+  /// Throws [NetworkFailure] when offline. Call first in every mutating op.
+  Future<void> _requireOnline() async {
+    if (!await _network.isConnected) throw const NetworkFailure();
+  }
 
   /// Local last-opened timestamps per thread (unread badges are derived).
   final HiveCacheService _seenCache;
-
-  /// Maps backend errors to the [Failure] taxonomy so blocs can rely on
-  /// `on Failure` instead of formatting raw exceptions.
-  Never _asFailure(Object e) {
-    if (e is Failure) throw e;
-    if (e is FirebaseException) {
-      throw ServerFailure(e.message ?? 'Chat operation failed');
-    }
-    if (e is PostgrestException) throw ServerFailure(e.message);
-    if (e is StorageException) throw ServerFailure(e.message);
-    throw ServerFailure(e.toString());
-  }
 
   @override
   Stream<List<ChatThread>> watchThreadsForUser(String userId) =>
@@ -42,31 +39,13 @@ class ChatRepositoryImpl implements ChatRepository {
       _remote.watchMessages(chatId);
 
   @override
-  Future<ChatThread> createThread({
-    required String wishlistItemId,
-    String wishlistItemName = '',
-    required String ownerId,
-    required List<String> participantIds,
-  }) async {
-    try {
-      return await _remote.createThread(
-        wishlistItemId: wishlistItemId,
-        wishlistItemName: wishlistItemName,
-        ownerId: ownerId,
-        participantIds: participantIds,
-      );
-    } catch (e) {
-      _asFailure(e);
-    }
-  }
-
-  @override
   Future<ChatThread> getOrCreateThread({
     required String wishlistItemId,
     String wishlistItemName = '',
     required String ownerId,
     required String participantId,
   }) async {
+    await _requireOnline();
     try {
       final existing = await _remote.findThreadForItem(
         wishlistItemId: wishlistItemId,
@@ -80,7 +59,7 @@ class ChatRepositoryImpl implements ChatRepository {
         participantIds: [ownerId, participantId],
       );
     } catch (e) {
-      _asFailure(e);
+      mapDataError(e);
     }
   }
 
@@ -90,6 +69,7 @@ class ChatRepositoryImpl implements ChatRepository {
     required String senderId,
     required String text,
   }) async {
+    await _requireOnline();
     try {
       return await _remote.sendMessage(
         ChatMessageModel(
@@ -101,7 +81,7 @@ class ChatRepositoryImpl implements ChatRepository {
         ),
       );
     } catch (e) {
-      _asFailure(e);
+      mapDataError(e);
     }
   }
 
@@ -111,14 +91,11 @@ class ChatRepositoryImpl implements ChatRepository {
     required String senderId,
     required String localImagePath,
   }) async {
-    final storage = _photoStorage;
-    if (storage == null) {
-      throw const ServerException('Photo upload is not configured');
-    }
+    await _requireOnline();
     // Upload first so the persisted message carries a public URL readable
     // by all participants — never a sender-local device path.
     try {
-      final imageUrl = await storage.upload(
+      final imageUrl = await _photoStorage.upload(
         senderId: senderId,
         chatId: chatId,
         filePath: localImagePath,
@@ -133,7 +110,7 @@ class ChatRepositoryImpl implements ChatRepository {
         ),
       );
     } catch (e) {
-      _asFailure(e);
+      mapDataError(e);
     }
   }
 
@@ -172,19 +149,11 @@ class ChatRepositoryImpl implements ChatRepository {
 
   @override
   Future<void> deleteChatsForItem(String wishlistItemId) async {
+    await _requireOnline();
     try {
       await _remote.deleteChatsForItem(wishlistItemId);
     } catch (e) {
-      _asFailure(e);
-    }
-  }
-
-  @override
-  Future<void> deleteThread(String chatId) async {
-    try {
-      await _remote.deleteThread(chatId);
-    } catch (e) {
-      _asFailure(e);
+      mapDataError(e);
     }
   }
 }

@@ -1,13 +1,18 @@
 import 'package:core/core.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../domain/repositories/wishlist_repository.dart';
+import '../../domain/usecases/wishlist_usecases.dart';
 import 'wishlist_event.dart';
 import 'wishlist_state.dart';
 
 class WishlistBloc extends Bloc<WishlistEvent, WishlistState> {
-  WishlistBloc(this._repo, {this._deleteChatsForItem})
-    : super(const WishlistState()) {
+  WishlistBloc({
+    required this._getMyItems,
+    required this._addItem,
+    required this._updateItem,
+    required this._deleteItem,
+    required this._setHidden,
+  }) : super(const WishlistState()) {
     on<WishlistLoad>(_onLoad);
     on<WishlistAdd>(_onAdd);
     on<WishlistUpdate>(_onUpdate);
@@ -15,20 +20,16 @@ class WishlistBloc extends Bloc<WishlistEvent, WishlistState> {
     on<WishlistToggleHide>(_onToggle);
   }
 
-  final WishlistRepository _repo;
-
-  /// Hook for deleting the item's Firestore chats (provided by the app's DI
-  /// so this package does not depend on the chat package). Chats are deleted
-  /// first: if chat deletion fails the item is kept and an error is emitted,
-  /// so a failed delete never orphans chats or silently drops the item.
-  final Future<void> Function(String itemId)? _deleteChatsForItem;
+  final GetMyItemsUseCase _getMyItems;
+  final AddItemUseCase _addItem;
+  final UpdateItemUseCase _updateItem;
+  final DeleteItemUseCase _deleteItem;
+  final SetHiddenUseCase _setHidden;
 
   Future<void> _onLoad(WishlistLoad e, Emitter<WishlistState> emit) async {
     emit(state.copyWith(isLoading: true, error: null));
     try {
-      final items = e.visibleOnly
-          ? await _repo.getVisibleItems(e.ownerId)
-          : await _repo.getMyItems(e.ownerId);
+      final items = await _getMyItems(e.ownerId);
       emit(state.copyWith(items: items, isLoading: false));
     } on Failure catch (f) {
       emit(state.copyWith(isLoading: false, error: f.message));
@@ -38,38 +39,48 @@ class WishlistBloc extends Bloc<WishlistEvent, WishlistState> {
   }
 
   Future<void> _onAdd(WishlistAdd e, Emitter<WishlistState> emit) async {
+    emit(state.copyWith(isLoading: true, error: null));
     try {
-      final saved = await _repo.addItem(e.item);
-      emit(state.copyWith(items: [...state.items, saved]));
+      final saved = await _addItem(e.item);
+      emit(state.copyWith(items: [...state.items, saved], isLoading: false));
+    } on Failure catch (f) {
+      emit(state.copyWith(isLoading: false, error: f.message));
     } catch (err) {
-      emit(state.copyWith(error: err.toString()));
+      emit(state.copyWith(isLoading: false, error: err.toString()));
     }
   }
 
   Future<void> _onUpdate(WishlistUpdate e, Emitter<WishlistState> emit) async {
+    emit(state.copyWith(isLoading: true, error: null));
     try {
-      final saved = await _repo.updateItem(e.item);
+      final saved = await _updateItem(e.item);
       emit(
         state.copyWith(
           items: state.items.map((i) => i.id == saved.id ? saved : i).toList(),
+          isLoading: false,
         ),
       );
+    } on Failure catch (f) {
+      emit(state.copyWith(isLoading: false, error: f.message));
     } catch (err) {
-      emit(state.copyWith(error: err.toString()));
+      emit(state.copyWith(isLoading: false, error: err.toString()));
     }
   }
 
   Future<void> _onDelete(WishlistDelete e, Emitter<WishlistState> emit) async {
+    emit(state.copyWith(isLoading: true, error: null));
     try {
-      await _deleteChatsForItem?.call(e.itemId);
-      await _repo.deleteItem(e.itemId);
+      await _deleteItem(e.itemId);
       emit(
         state.copyWith(
           items: state.items.where((i) => i.id != e.itemId).toList(),
+          isLoading: false,
         ),
       );
+    } on Failure catch (f) {
+      emit(state.copyWith(isLoading: false, error: f.message));
     } catch (err) {
-      emit(state.copyWith(error: err.toString()));
+      emit(state.copyWith(isLoading: false, error: err.toString()));
     }
   }
 
@@ -77,11 +88,22 @@ class WishlistBloc extends Bloc<WishlistEvent, WishlistState> {
     WishlistToggleHide e,
     Emitter<WishlistState> emit,
   ) async {
+    // Optimistic patch + rollback: no full reload, no scroll loss, and no
+    // ownerId needs to travel on the event.
+    final previous = state.items;
+    emit(
+      state.copyWith(
+        items: previous
+            .map((i) => i.id == e.itemId ? i.copyWith(isHidden: e.hidden) : i)
+            .toList(),
+      ),
+    );
     try {
-      await _repo.setHidden(e.itemId, e.hidden);
-      add(WishlistLoad(e.ownerId));
+      await _setHidden(SetHiddenParams(itemId: e.itemId, hidden: e.hidden));
+    } on Failure catch (f) {
+      emit(state.copyWith(items: previous, error: f.message));
     } catch (err) {
-      emit(state.copyWith(error: err.toString()));
+      emit(state.copyWith(items: previous, error: err.toString()));
     }
   }
 }

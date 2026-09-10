@@ -1,3 +1,4 @@
+import 'package:core_ui/core_ui.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -6,7 +7,8 @@ import 'package:image_picker/image_picker.dart';
 import '../bloc/chat_bloc.dart';
 import '../bloc/chat_event.dart';
 import '../bloc/chat_state.dart';
-import '../widgets/chat_error_listener.dart';
+import '../widgets/message_bubble.dart';
+import '../widgets/message_input.dart';
 
 /// Secret discussion UI. Requires a [ChatBloc] above it in the tree
 /// (provided by [ChatThreadPage]).
@@ -53,11 +55,18 @@ class _ChatThreadViewState extends State<ChatThreadView> {
         .add(ChatPhotoSend(widget.chatId, widget.currentUserId, file.path));
   }
 
+  void _send(String text) {
+    BlocProvider.of<ChatBloc>(context).add(
+      ChatTextSend(widget.chatId, widget.currentUserId, text),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text('secret_discussion'.tr())),
-      body: ChatErrorListener(
+      body: AppErrorListener<ChatBloc, ChatState>(
+        errorOf: (s) => s.error,
         child: Column(
           children: [
             Expanded(
@@ -68,68 +77,19 @@ class _ChatThreadViewState extends State<ChatThreadView> {
                     itemCount: state.messages.length,
                     itemBuilder: (context, i) {
                       final m = state.messages[i];
-                      final mine = m.senderId == widget.currentUserId;
-                      return Align(
-                        alignment: mine
-                            ? Alignment.centerRight
-                            : Alignment.centerLeft,
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(vertical: 4),
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: mine
-                                ? Theme.of(context).colorScheme.primaryContainer
-                                : Colors.grey.shade200,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (m.imageUrl != null)
-                                Image.network(
-                                  m.imageUrl!,
-                                  height: 160,
-                                  errorBuilder: (_, _, _) =>
-                                      const Icon(Icons.image),
-                                ),
-                              if (m.text != null) Text(m.text!),
-                            ],
-                          ),
-                        ),
+                      return MessageBubble(
+                        message: m,
+                        mine: m.senderId == widget.currentUserId,
                       );
                     },
                   );
                 },
               ),
             ),
-            SafeArea(
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.photo_outlined),
-                    onPressed: _pickPhoto,
-                  ),
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      decoration: InputDecoration(
-                        hintText: 'message_hint'.tr(),
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.send),
-                    onPressed: () {
-                      final text = _controller.text.trim();
-                      if (text.isEmpty) return;
-                      BlocProvider.of<ChatBloc>(context).add(
-                        ChatTextSend(widget.chatId, widget.currentUserId, text),
-                      );
-                      _controller.clear();
-                    },
-                  ),
-                ],
-              ),
+            MessageInput(
+              controller: _controller,
+              onPickPhoto: _pickPhoto,
+              onSend: _send,
             ),
           ],
         ),

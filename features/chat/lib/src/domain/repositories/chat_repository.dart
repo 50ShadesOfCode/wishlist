@@ -3,12 +3,6 @@ import '../entities/chat_message.dart';
 abstract class ChatRepository {
   Stream<List<ChatThread>> watchThreadsForUser(String userId);
   Stream<List<ChatMessage>> watchMessages(String chatId);
-  Future<ChatThread> createThread({
-    required String wishlistItemId,
-    String wishlistItemName,
-    required String ownerId,
-    required List<String> participantIds,
-  });
 
   /// Existing thread for the item visible to [participantId], or a new one
   /// with participants `[ownerId, participantId]` when none exists.
@@ -42,5 +36,4 @@ abstract class ChatRepository {
   /// Destroys all chats (and messages) bound to a wishlist item.
   /// Must be called when the owner deletes the item.
   Future<void> deleteChatsForItem(String wishlistItemId);
-  Future<void> deleteThread(String chatId);
 }

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wishlist/src/data/models/wishlist_item_model.dart';
 import 'package:wishlist/wishlist.dart';
 
 void main() {
@@ -46,17 +47,38 @@ void main() {
     expect(json['name'], 'Bike');
   });
 
-  test('WishlistToggleHide carries ownerId', () {
-    const e = WishlistToggleHide('i1', true, ownerId: 'u1');
-    expect(e.ownerId, 'u1');
-    expect(e.props, contains('u1'));
+  test('WishlistToggleHide is optimistic with rollback', () async {
+    final repo = _FakeWishlistRepo(<String>[]);
+    final bloc = WishlistBloc(
+      getMyItems: GetMyItemsUseCase(repo),
+      addItem: AddItemUseCase(repo),
+      updateItem: UpdateItemUseCase(repo),
+      deleteItem: DeleteItemUseCase(repo),
+      setHidden: SetHiddenUseCase(repo),
+    );
+    // Seed state through a load, then toggle: no reload event expected,
+    // the list is patched in place.
+    bloc.add(const WishlistLoad('u1'));
+    await bloc.stream.firstWhere((s) => !s.isLoading && s.items.isNotEmpty);
+    bloc.add(const WishlistToggleHide('i1', true));
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(bloc.state.items.single.isHidden, isTrue);
+    expect(bloc.state.error, isNull);
+    await bloc.close();
   });
 
   test('WishlistBloc deletes chats before the item', () async {
     final order = <String>[];
+    final repo = _FakeWishlistRepo(order);
     final bloc = WishlistBloc(
-      _FakeWishlistRepo(order),
-      deleteChatsForItem: (id) async => order.add('chats:$id'),
+      getMyItems: GetMyItemsUseCase(repo),
+      addItem: AddItemUseCase(repo),
+      updateItem: UpdateItemUseCase(repo),
+      deleteItem: DeleteItemUseCase(
+        repo,
+        deleteChatsForItem: (id) async => order.add('chats:$id'),
+      ),
+      setHidden: SetHiddenUseCase(repo),
     );
     bloc.add(const WishlistDelete('i1'));
     await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -65,14 +87,37 @@ void main() {
   });
 
   test('WishlistBloc keeps item when chat delete fails', () async {
+    final repo = _FakeWishlistRepo(<String>[]);
     final bloc = WishlistBloc(
-      _FakeWishlistRepo(<String>[]),
-      deleteChatsForItem: (_) async => throw Exception('firestore down'),
+      getMyItems: GetMyItemsUseCase(repo),
+      addItem: AddItemUseCase(repo),
+      updateItem: UpdateItemUseCase(repo),
+      deleteItem: DeleteItemUseCase(
+        repo,
+        deleteChatsForItem: (_) async => throw Exception('firestore down'),
+      ),
+      setHidden: SetHiddenUseCase(repo),
     );
     bloc.add(const WishlistDelete('i1'));
     final failed = await bloc.stream.firstWhere((s) => s.error != null);
     expect(failed.error, contains('firestore down'));
     await bloc.close();
+  });
+
+  test('DeleteItemUseCase deletes chats before the item', () async {
+    final order = <String>[];
+    final usecase = DeleteItemUseCase(
+      _FakeWishlistRepo(order),
+      deleteChatsForItem: (id) async => order.add('chats:$id'),
+    );
+    await usecase('i1');
+    expect(order, ['chats:i1', 'item:i1']);
+  });
+
+  test('GetMyItemsUseCase delegates to the repository', () async {
+    final repo = _FakeWishlistRepo(<String>[]);
+    final items = await GetMyItemsUseCase(repo)('u1');
+    expect(items.single.id, 'i1');
   });
 }
 
@@ -84,8 +129,14 @@ class _FakeWishlistRepo implements WishlistRepository {
   Future<void> deleteItem(String itemId) async => order.add('item:$itemId');
 
   @override
-  Future<List<WishlistItem>> getMyItems(String ownerId) =>
-      throw UnimplementedError();
+  Future<List<WishlistItem>> getMyItems(String ownerId) async => [
+    WishlistItem(
+      id: 'i1',
+      ownerId: ownerId,
+      name: 'Bike',
+      createdAt: DateTime.utc(2026, 1, 1),
+    ),
+  ];
   @override
   Future<List<WishlistItem>> getVisibleItems(String ownerId) =>
       throw UnimplementedError();
@@ -98,8 +149,9 @@ class _FakeWishlistRepo implements WishlistRepository {
   Future<WishlistItem> updateItem(WishlistItem item) =>
       throw UnimplementedError();
   @override
-  Future<void> setHidden(String itemId, bool hidden) =>
-      throw UnimplementedError();
+  Future<void> setHidden(String itemId, bool hidden) async {
+    order.add('hidden:$itemId:$hidden');
+  }
   @override
   Future<String> uploadItemImage({
     required String ownerId,
@@ -116,8 +168,5 @@ class _FakeWishlistRepo implements WishlistRepository {
       throw UnimplementedError();
   @override
   Future<List<Subscription>> mySubscriptions(String subscriberId) =>
-      throw UnimplementedError();
-  @override
-  Stream<List<WishlistItem>> watchUserItems(String ownerId) =>
       throw UnimplementedError();
 }

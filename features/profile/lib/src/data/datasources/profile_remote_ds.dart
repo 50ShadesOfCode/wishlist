@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:core/core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -19,13 +17,6 @@ class ProfileRemoteDataSource {
     return ProfileModel.fromJson(row);
   }
 
-  /// Live updates for one profile (Supabase Realtime).
-  Stream<ProfileModel?> watchProfile(String userId) => _client
-      .from(AppConstants.profilesTable)
-      .stream(primaryKey: ['user_id'])
-      .eq('user_id', userId)
-      .map((rows) => rows.isEmpty ? null : ProfileModel.fromJson(rows.first));
-
   Future<ProfileModel> upsertProfile(ProfileModel profile) async {
     final row = await _client
         .from(AppConstants.profilesTable)
@@ -35,20 +26,13 @@ class ProfileRemoteDataSource {
     return ProfileModel.fromJson(row);
   }
 
-  Future<String> uploadAvatar(String userId, String filePath) async {
-    final ext = safeFileExtension(filePath);
-    final storagePath = '$userId/avatar.$ext';
-    await _client.storage
-        .from(AppConstants.avatarsBucket)
-        .upload(
-          storagePath,
-          File(filePath),
-          fileOptions: const FileOptions(upsert: true),
-        );
-    return _client.storage
-        .from(AppConstants.avatarsBucket)
-        .getPublicUrl(storagePath);
-  }
+  Future<String> uploadAvatar(String userId, String filePath) =>
+      uploadToBucket(
+        _client,
+        bucket: AppConstants.avatarsBucket,
+        path: '$userId/avatar.${safeFileExtension(filePath)}',
+        filePath: filePath,
+      );
 
   Future<void> deleteProfile(String userId) async {
     await _client

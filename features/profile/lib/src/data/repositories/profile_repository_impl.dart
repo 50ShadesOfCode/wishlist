@@ -1,5 +1,4 @@
 import 'package:core/core.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../domain/entities/profile.dart';
 import '../../domain/repositories/profile_repository.dart';
@@ -16,38 +15,37 @@ class ProfileRepositoryImpl implements ProfileRepository {
 
   String _key(String userId) => 'profile_$userId';
 
-  Never _asFailure(Object e) {
-    if (e is Failure) throw e;
-    if (e is PostgrestException) throw ServerFailure(e.message);
-    if (e is StorageException) throw ServerFailure(e.message);
-    throw ServerFailure(e.toString());
-  }
-
-  @override
-  Future<Profile?> getProfile(String userId) async {
-    try {
-      final remote = await _remote.getProfile(userId);
-      if (remote != null) {
-        await _cache.put(_key(userId), remote.toJson());
-        return remote;
-      }
-    } catch (e) {
-      // Offline → Hive fallback. Online → surface the failure instead of
-      // silently serving stale cache (which hid RLS/schema bugs).
-      if (await _network.isConnected) _asFailure(e);
-    }
+  Future<Profile?> _getCached(String userId) async {
     final cached = await _cache.get(_key(userId));
     if (cached == null) return null;
     return ProfileModel.fromJson(cached);
   }
 
   @override
+  Future<Profile?> getProfile(String userId) => cachedRead(
+    network: _network,
+    remote: () async {
+      final remote = await _remote.getProfile(userId);
+      if (remote != null) {
+        await _cache.put(_key(userId), remote.toJson());
+        return remote;
+      }
+      return _getCached(userId);
+    },
+    fallback: () => _getCached(userId),
+  );
+
+  @override
   Future<Profile> updateProfile(Profile profile) async {
     final model = ProfileModel.fromEntity(profile);
-    if (!await _network.isConnected) {
-      // Offline: persist to cache now, queue the upsert for sync.
-      await _cache.put(_key(profile.userId), model.toJson());
-      await _outbox.enqueue('profile_update', model.toJson());
+    // Offline: persist to cache now, queue the upsert for sync.
+    if (await enqueueOfflineWrite(
+      network: _network,
+      outbox: _outbox,
+      kind: OutboxKind.profileUpdate,
+      payload: model.toJson(),
+      writeCache: () => _cache.put(_key(profile.userId), model.toJson()),
+    )) {
       return model;
     }
     try {
@@ -55,7 +53,7 @@ class ProfileRepositoryImpl implements ProfileRepository {
       await _cache.put(_key(profile.userId), saved.toJson());
       return saved;
     } catch (e) {
-      _asFailure(e);
+      mapDataError(e);
     }
   }
 
@@ -65,7 +63,7 @@ class ProfileRepositoryImpl implements ProfileRepository {
     try {
       return await _remote.uploadAvatar(userId, filePath);
     } catch (e) {
-      _asFailure(e);
+      mapDataError(e);
     }
   }
 
@@ -79,17 +77,21 @@ class ProfileRepositoryImpl implements ProfileRepository {
           .clearAvatar();
       return await updateProfile(cleared);
     } catch (e) {
-      _asFailure(e);
+      mapDataError(e);
     }
   }
 
   @override
   Future<bool> isUsernameTaken(String username, String excludeUserId) async {
+    // Deliberate exception to the throw-offline rule: returning false lets
+    // the edit proceed to updateProfile, which queues it in the outbox.
+    // A real collision surfaces on the next online save instead of blocking
+    // offline edits entirely.
     if (!await _network.isConnected) return false;
     try {
       return await _remote.isUsernameTaken(username, excludeUserId);
     } catch (e) {
-      _asFailure(e);
+      mapDataError(e);
     }
   }
 
@@ -99,12 +101,9 @@ class ProfileRepositoryImpl implements ProfileRepository {
     try {
       await _remote.deleteProfile(userId);
     } catch (e) {
-      _asFailure(e);
+      mapDataError(e);
     } finally {
       await _cache.delete(_key(userId));
     }
   }
-
-  @override
-  Stream<Profile?> watchProfile(String userId) => _remote.watchProfile(userId);
 }

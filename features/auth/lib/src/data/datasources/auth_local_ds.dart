@@ -10,10 +10,7 @@ class AuthLocalDataSource {
   final HiveCacheService _cache;
   final SecureStorageService _secure;
 
-  static const _box = AppConstants.authCacheBox;
   static const _key = 'current_user';
-
-  HiveCacheService get cacheBox => _cache;
 
   Future<void> cacheUser(UserModel user) => _cache.put(_key, user.toJson());
 
@@ -40,7 +37,4 @@ class AuthLocalDataSource {
       }
     }
   }
-
-  static String get boxName => _box;
-  static String get cacheKey => _key;
 }

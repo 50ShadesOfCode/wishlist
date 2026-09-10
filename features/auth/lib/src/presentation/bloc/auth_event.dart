@@ -42,9 +42,3 @@ class PasswordResetRequested extends AuthEvent {
   const PasswordResetRequested(this.email);
   final String email;
 }
-
-/// Clears transient UI state ([AuthState.error], [AuthState.passwordResetSent])
-/// after the page has displayed it, so rebuilds never re-fire snackbars.
-class AuthErrorCleared extends AuthEvent {
-  const AuthErrorCleared();
-}

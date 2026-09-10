@@ -22,5 +22,4 @@ abstract class WishlistRepository {
   Future<void> subscribe(String subscriberId, String targetUserId);
   Future<void> unsubscribe(String subscriberId, String targetUserId);
   Future<List<Subscription>> mySubscriptions(String subscriberId);
-  Stream<List<WishlistItem>> watchUserItems(String ownerId);
 }

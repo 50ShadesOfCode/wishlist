@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:core/core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -15,19 +13,10 @@ class ChatPhotoStorage {
     required String senderId,
     required String chatId,
     required String filePath,
-  }) async {
-    final ext = safeFileExtension(filePath);
-    final fileName = '${DateTime.now().microsecondsSinceEpoch}.$ext';
-    final storagePath = '$senderId/chat/$chatId/$fileName';
-    await _client.storage
-        .from(AppConstants.avatarsBucket)
-        .upload(
-          storagePath,
-          File(filePath),
-          fileOptions: const FileOptions(upsert: true),
-        );
-    return _client.storage
-        .from(AppConstants.avatarsBucket)
-        .getPublicUrl(storagePath);
-  }
+  }) => uploadToBucket(
+    _client,
+    bucket: AppConstants.avatarsBucket,
+    path: '$senderId/chat/$chatId/${storageFileName(filePath)}',
+    filePath: filePath,
+  );
 }

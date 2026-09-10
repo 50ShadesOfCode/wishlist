@@ -3,12 +3,13 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
-import 'package:form_builder_validators/form_builder_validators.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../bloc/profile_bloc.dart';
 import '../bloc/profile_event.dart';
 import '../bloc/profile_state.dart';
+import '../widgets/avatar_section.dart';
+import '../widgets/settings_section.dart';
 import '../../domain/entities/profile.dart';
 
 /// Telegram-like combined Profile + Settings screen UI. Requires a
@@ -73,12 +74,8 @@ class _ProfileFormState extends State<ProfileForm> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text('profile_settings'.tr())),
-      body: BlocListener<ProfileBloc, ProfileState>(
-        listenWhen: (prev, curr) =>
-            prev.error != curr.error && curr.error != null,
-        listener: (context, state) =>
-            ScaffoldMessenger.of(context)
-                .showSnackBar(SnackBar(content: Text(state.error!))),
+      body: AppErrorListener<ProfileBloc, ProfileState>(
+        errorOf: (s) => s.error,
         child: BlocBuilder<ProfileBloc, ProfileState>(
           builder: (context, state) {
             final profile =
@@ -86,24 +83,18 @@ class _ProfileFormState extends State<ProfileForm> {
                 Profile(userId: widget.userId, username: 'user');
             return SingleChildScrollView(
               padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  GestureDetector(
-                    onTap: () => _pickAvatar(profile),
-                    child: AppAvatar(imageUrl: profile.avatarUrl, radius: 48),
-                  ),
-                  const SizedBox(height: 8),
-                  Text('tap_avatar'.tr()),
-                  if (profile.avatarUrl != null)
-                    TextButton(
-                      onPressed: state.isLoading
-                          ? null
-                          : () =>
-                                BlocProvider.of<ProfileBloc>(context)
-                                    .add(ProfileAvatarRemoved(profile.userId)),
-                      child: Text('remove_photo'.tr()),
-                    ),
-                  const SizedBox(height: 16),
+            child: Column(
+              children: [
+                AvatarSection(
+                  profile: profile,
+                  isLoading: state.isLoading,
+                  onPick: () => _pickAvatar(profile),
+                  onRemove: () =>
+                      BlocProvider.of<ProfileBloc>(context).add(
+                        ProfileAvatarRemoved(profile.userId),
+                      ),
+                ),
+                const SizedBox(height: 16),
                   FormBuilder(
                     key: _formKey,
                     initialValue: {
@@ -112,18 +103,13 @@ class _ProfileFormState extends State<ProfileForm> {
                     },
                     child: Column(
                       children: [
-                        FormBuilderTextField(
-                          name: 'username',
-                          // Mirrors Validators.isValidUsername (3..30 chars).
-                          validator: FormBuilderValidators.compose([
-                            FormBuilderValidators.required(),
-                            FormBuilderValidators.minLength(3),
-                            FormBuilderValidators.maxLength(30),
-                          ]),
-                          decoration: InputDecoration(
-                            labelText: 'username'.tr(),
-                          ),
+                      FormBuilderTextField(
+                        name: 'username',
+                        validator: AppValidators.username,
+                        decoration: InputDecoration(
+                          labelText: 'username'.tr(),
                         ),
+                      ),
                         const SizedBox(height: 12),
                         FormBuilderDateTimePicker(
                           name: 'dob',
@@ -138,11 +124,11 @@ class _ProfileFormState extends State<ProfileForm> {
                           decoration: InputDecoration(labelText: 'dob'.tr()),
                         ),
                         const SizedBox(height: 12),
-                        FormBuilderTextField(
-                          name: 'city',
-                          validator: FormBuilderValidators.maxLength(60),
-                          decoration: InputDecoration(labelText: 'city'.tr()),
-                        ),
+                      FormBuilderTextField(
+                        name: 'city',
+                        validator: AppValidators.city,
+                        decoration: InputDecoration(labelText: 'city'.tr()),
+                      ),
                         const SizedBox(height: 16),
                         AppButton(
                           label: 'save_profile'.tr(),
@@ -167,74 +153,18 @@ class _ProfileFormState extends State<ProfileForm> {
                     ),
                   ),
                   const Divider(height: 32),
-                  SwitchListTile(
-                    title: Text('dark_theme'.tr()),
-                    value: _dark,
-                    onChanged: (v) {
+                  SettingsSection(
+                    isDark: _dark,
+                    onThemeChanged: (v) {
                       setState(() => _dark = v);
                       widget.onChangeTheme?.call(v);
                     },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.language_outlined),
-                    title: Text('language'.tr()),
-                    trailing: DropdownButton<Locale>(
-                      value: widget.supportedLocales.contains(context.locale)
-                          ? context.locale
-                          : widget.initialLocale,
-                      underline: const SizedBox.shrink(),
-                      items: widget.supportedLocales
-                          .map(
-                            (l) => DropdownMenuItem(
-                              value: l,
-                              child: Text(l.languageCode.toUpperCase()),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (l) {
-                        if (l != null) widget.onChangeLocale?.call(l);
-                      },
-                    ),
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.lock_outline),
-                    title: Text('change_password'.tr()),
-                    onTap: widget.onChangePassword,
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.logout),
-                    title: Text('logout'.tr()),
-                    onTap: widget.onLogout,
-                  ),
-                  ListTile(
-                    leading: const Icon(
-                      Icons.delete_forever,
-                      color: Colors.red,
-                    ),
-                    title: Text(
-                      'delete_account'.tr(),
-                      style: const TextStyle(color: Colors.red),
-                    ),
-                    onTap: () async {
-                      final ok = await showDialog<bool>(
-                        context: context,
-                        builder: (_) => AlertDialog(
-                          title: Text('delete_confirm_title'.tr()),
-                          content: Text('delete_confirm_body'.tr()),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, false),
-                              child: Text('cancel'.tr()),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, true),
-                              child: Text('delete'.tr()),
-                            ),
-                          ],
-                        ),
-                      );
-                      if (ok == true) await widget.onDeleteAccount?.call();
-                    },
+                    initialLocale: widget.initialLocale,
+                    supportedLocales: widget.supportedLocales,
+                    onChangeLocale: widget.onChangeLocale,
+                    onChangePassword: widget.onChangePassword,
+                    onLogout: widget.onLogout,
+                    onDeleteAccount: widget.onDeleteAccount,
                   ),
                 ],
               ),

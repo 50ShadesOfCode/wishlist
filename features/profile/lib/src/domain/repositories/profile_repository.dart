@@ -7,5 +7,4 @@ abstract class ProfileRepository {
   Future<Profile> removeAvatar(String userId);
   Future<bool> isUsernameTaken(String username, String excludeUserId);
   Future<void> deleteAccount(String userId);
-  Stream<Profile?> watchProfile(String userId);
 }

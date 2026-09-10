@@ -3,18 +3,9 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../domain/entities/wishlist_item.dart';
-
-class _TargetSection {
-  const _TargetSection({
-    required this.subscription,
-    required this.name,
-    required this.items,
-  });
-
-  final Subscription subscription;
-  final String name;
-  final List<WishlistItem> items;
-}
+import '../widgets/subscribe_bar.dart';
+import '../widgets/subscription_section.dart'
+    show SubscriptionSectionHeader, TargetSection;
 
 /// Feed of visible items from subscribed users, with subscribe/unsubscribe.
 ///
@@ -57,7 +48,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
   bool _loading = true;
   bool _adding = false;
   String? _error;
-  List<_TargetSection> _sections = const [];
+  List<TargetSection> _sections = const [];
 
   @override
   void initState() {
@@ -71,6 +62,24 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
     super.dispose();
   }
 
+  /// Loads one target's display data. Each target degrades independently
+  /// (unknown name → id, failed items → empty list).
+  Future<TargetSection> _loadSection(Subscription s) async {
+    String name;
+    try {
+      name = await widget.resolveName(s.targetUserId);
+    } catch (_) {
+      name = s.targetUserId;
+    }
+    List<WishlistItem> items;
+    try {
+      items = await widget.onLoadItems(s.targetUserId);
+    } catch (_) {
+      items = const [];
+    }
+    return TargetSection(subscription: s, name: name, items: items);
+  }
+
   Future<void> _refresh() async {
     setState(() {
       _loading = true;
@@ -78,22 +87,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
     });
     try {
       final subs = await widget.onLoadSubscriptions();
-      final sections = <_TargetSection>[];
-      for (final s in subs) {
-        String name;
-        try {
-          name = await widget.resolveName(s.targetUserId);
-        } catch (_) {
-          name = s.targetUserId;
-        }
-        List<WishlistItem> items;
-        try {
-          items = await widget.onLoadItems(s.targetUserId);
-        } catch (_) {
-          items = const [];
-        }
-        sections.add(_TargetSection(subscription: s, name: name, items: items));
-      }
+      final sections = await Future.wait(subs.map(_loadSection));
       if (mounted) {
         setState(() {
           _sections = sections;
@@ -120,9 +114,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
       await _refresh();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${'subscribe_failed'.tr()}: $e')),
-        );
+        showAppSnack(context, '${'subscribe_failed'.tr()}: $e');
       }
     } finally {
       if (mounted) setState(() => _adding = false);
@@ -135,8 +127,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
       await _refresh();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.toString())));
+        showAppSnack(context, e.toString());
       }
     }
   }
@@ -150,31 +141,10 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _idController,
-                    decoration: InputDecoration(
-                      labelText: 'user_id'.tr(),
-                      hintText: 'following_hint'.tr(),
-                    ),
-                    onSubmitted: (_) => _add(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton.filled(
-                  tooltip: 'add'.tr(),
-                  onPressed: _adding ? null : _add,
-                  icon: _adding
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.person_add_outlined),
-                ),
-              ],
+            SubscribeBar(
+              controller: _idController,
+              adding: _adding,
+              onAdd: _add,
             ),
             const SizedBox(height: 12),
             if (_loading)
@@ -191,29 +161,10 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
               )
             else
               for (final section in _sections) ...[
-                Row(
-                  children: [
-                    CircleAvatar(
-                      child: Text(
-                        section.name.isNotEmpty
-                            ? section.name[0].toUpperCase()
-                            : '?',
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        section.name,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'unfollow'.tr(),
-                      icon: const Icon(Icons.person_remove_outlined),
-                      onPressed: () =>
-                          _remove(section.subscription.targetUserId),
-                    ),
-                  ],
+                SubscriptionSectionHeader(
+                  name: section.name,
+                  onUnfollow: () =>
+                      _remove(section.subscription.targetUserId),
                 ),
                 const SizedBox(height: 8),
                 for (final item in section.items)

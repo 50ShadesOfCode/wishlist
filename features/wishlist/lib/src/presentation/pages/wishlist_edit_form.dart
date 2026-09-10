@@ -4,7 +4,6 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
-import 'package:form_builder_validators/form_builder_validators.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
@@ -156,7 +155,7 @@ class _WishlistEditFormState extends State<WishlistEditForm> {
               const SizedBox(height: 12),
               FormBuilderTextField(
                 name: 'name',
-                validator: FormBuilderValidators.required(),
+                validator: AppValidators.requiredField,
                 decoration: InputDecoration(labelText: 'name'.tr()),
               ),
               const SizedBox(height: 12),

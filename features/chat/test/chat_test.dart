@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:chat/src/data/models/chat_models.dart';
+import 'package:chat/src/utils/thread_label.dart';
 import 'package:chat/chat.dart';
 
 void main() {

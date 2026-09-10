@@ -26,10 +26,10 @@ class ChatTextSend extends ChatEvent {
 }
 
 class ChatPhotoSend extends ChatEvent {
-  const ChatPhotoSend(this.chatId, this.senderId, this.localPath);
+  const ChatPhotoSend(this.chatId, this.senderId, this.localImagePath);
   final String chatId;
   final String senderId;
-  final String localPath;
+  final String localImagePath;
 }
 
 /// Internal: recomputes unread badges after the thread list changes.
@@ -40,4 +40,22 @@ class ChatUnreadRefresh extends ChatEvent {
 
   @override
   List<Object?> get props => [threads, userId];
+}
+
+/// Internal: a new message snapshot arrived (see [_messagesSub] handling).
+class ChatMessagesUpdated extends ChatEvent {
+  const ChatMessagesUpdated(this.messages);
+  final List<ChatMessage> messages;
+
+  @override
+  List<Object?> get props => [messages];
+}
+
+/// Internal: the message stream failed.
+class ChatMessagesFailed extends ChatEvent {
+  const ChatMessagesFailed(this.error);
+  final String error;
+
+  @override
+  List<Object?> get props => [error];
 }
