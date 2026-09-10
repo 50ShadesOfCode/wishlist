@@ -1,5 +1,6 @@
 import 'package:core/core.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../domain/entities/wishlist_item.dart';
 import '../../domain/repositories/wishlist_repository.dart';
@@ -7,11 +8,32 @@ import '../datasources/wishlist_remote_ds.dart';
 import '../models/wishlist_item_model.dart';
 
 class WishlistRepositoryImpl implements WishlistRepository {
-  WishlistRepositoryImpl(this._remote, this._cache, this._notifications);
+  WishlistRepositoryImpl(
+    this._remote,
+    this._cache,
+    this._notifications,
+    this._network,
+  );
 
   final WishlistRemoteDataSource _remote;
   final HiveCacheService _cache;
   final FlutterLocalNotificationsPlugin _notifications;
+  final NetworkInfo _network;
+
+  /// Maps backend errors to the [Failure] taxonomy. Unknown/programming
+  /// errors are wrapped as [ServerFailure] so blocs can rely on
+  /// `on Failure` instead of formatting raw exceptions.
+  Never _asFailure(Object e) {
+    if (e is Failure) throw e;
+    if (e is PostgrestException) throw ServerFailure(e.message);
+    if (e is StorageException) throw ServerFailure(e.message);
+    throw ServerFailure(e.toString());
+  }
+
+  /// Mutations require connectivity; reads may fall back to Hive.
+  Future<void> _requireOnline() async {
+    if (!await _network.isConnected) throw const NetworkFailure();
+  }
 
   Future<void> _notifyNewItem(WishlistItem item) async {
     await _notifications.show(
@@ -50,7 +72,10 @@ class WishlistRepositoryImpl implements WishlistRepository {
         for (final i in items) _scopedKey(ownerId, i.id): i.toJson(),
       });
       return items;
-    } catch (_) {
+    } catch (e) {
+      // Offline → Hive fallback. Online → surface the real failure instead
+      // of silently serving stale cache (which hid RLS/schema bugs).
+      if (await _network.isConnected) _asFailure(e);
       final cached = await _cache.getAll();
       // Filter by the row's owner_id (not just the key) so a signed-in user
       // never sees another user's cached items.
@@ -122,6 +147,7 @@ class WishlistRepositoryImpl implements WishlistRepository {
 
   @override
   Future<WishlistItem> addItem(WishlistItem item) async {
+    await _requireOnline();
     final uploaded = <String>[];
     try {
       final urls = await _resolveImageUrls(item, uploaded);
@@ -129,16 +155,22 @@ class WishlistRepositoryImpl implements WishlistRepository {
         WishlistItemModel.fromEntity(item.copyWith(imageUrls: urls)),
       );
       await _cache.put(_scopedKey(saved.ownerId, saved.id), saved.toJson());
-      await _notifyNewItem(saved);
+      try {
+        // Local reminder only: never fail the save over a notification.
+        await _notifyNewItem(saved);
+      } catch (_) {
+        // ignore notification failures
+      }
       return saved;
-    } catch (_) {
+    } catch (e) {
       await _deleteUrlsBestEffort(uploaded);
-      rethrow;
+      _asFailure(e);
     }
   }
 
   @override
   Future<WishlistItem> updateItem(WishlistItem item) async {
+    await _requireOnline();
     final uploaded = <String>[];
     try {
       final urls = await _resolveImageUrls(item, uploaded);
@@ -159,14 +191,15 @@ class WishlistRepositoryImpl implements WishlistRepository {
         // ignore diff cleanup failures
       }
       return saved;
-    } catch (_) {
+    } catch (e) {
       await _deleteUrlsBestEffort(uploaded);
-      rethrow;
+      _asFailure(e);
     }
   }
 
   @override
   Future<void> deleteItem(String itemId) async {
+    await _requireOnline();
     // NOTE: this deletes only the Supabase row + local cache. Callers must
     // also delete the item's Firestore chats (wired in WishlistBloc via the
     // injected deleteChatsForItem hook) or chats will leak.
@@ -177,7 +210,11 @@ class WishlistRepositoryImpl implements WishlistRepository {
     } catch (_) {
       // proceed with row delete even if the pre-fetch fails
     }
-    await _remote.delete(itemId);
+    try {
+      await _remote.delete(itemId);
+    } catch (e) {
+      _asFailure(e);
+    }
     final found = await _findCached(itemId);
     if (found != null) await _cache.delete(found.$1);
     await _deleteUrlsBestEffort(imageUrls);
@@ -185,6 +222,7 @@ class WishlistRepositoryImpl implements WishlistRepository {
 
   @override
   Future<void> setHidden(String itemId, bool hidden) async {
+    await _requireOnline();
     final found = await _findCached(itemId);
     if (found != null) {
       await updateItem(found.$2.copyWith(isHidden: hidden));
@@ -194,24 +232,42 @@ class WishlistRepositoryImpl implements WishlistRepository {
     // silently doing nothing.
     final remote = await _remote.fetchById(itemId);
     if (remote == null) {
-      throw const NotFoundException('Wishlist item not found');
+      throw const NotFoundFailure('Wishlist item not found');
     }
     await updateItem(remote.copyWith(isHidden: hidden));
   }
 
   @override
-  Future<void> subscribe(String subscriberId, String targetUserId) =>
-      _remote.subscribe(subscriberId, targetUserId);
-
-  @override
-  Future<void> unsubscribe(String subscriberId, String targetUserId) =>
-      _remote.unsubscribe(subscriberId, targetUserId);
-
-  @override
-  Future<List<Subscription>> mySubscriptions(String subscriberId) async => [];
-
-  @override
-  Stream<List<WishlistItem>> watchUserItems(String ownerId) async* {
-    yield await getMyItems(ownerId);
+  Future<void> subscribe(String subscriberId, String targetUserId) async {
+    await _requireOnline();
+    try {
+      await _remote.subscribe(subscriberId, targetUserId);
+    } catch (e) {
+      _asFailure(e);
+    }
   }
+
+  @override
+  Future<void> unsubscribe(String subscriberId, String targetUserId) async {
+    await _requireOnline();
+    try {
+      await _remote.unsubscribe(subscriberId, targetUserId);
+    } catch (e) {
+      _asFailure(e);
+    }
+  }
+
+  @override
+  Future<List<Subscription>> mySubscriptions(String subscriberId) async {
+    await _requireOnline();
+    try {
+      return await _remote.fetchSubscriptions(subscriberId);
+    } catch (e) {
+      _asFailure(e);
+    }
+  }
+
+  @override
+  Stream<List<WishlistItem>> watchUserItems(String ownerId) =>
+      _remote.watchMine(ownerId);
 }

@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -59,13 +60,13 @@ class _ChatListPageState extends State<ChatListPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Secret chats')),
+      appBar: AppBar(title: Text('secret_chats'.tr())),
       body: _ChatErrorListener(
         child: BlocBuilder<ChatBloc, ChatState>(
           builder: (context, state) {
             if (state.threads.isEmpty) {
-              return const Center(
-                child: Text('No secret discussions yet.'),
+              return Center(
+                child: Text('no_chats'.tr()),
               );
             }
             return ListView.builder(
@@ -134,7 +135,7 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Secret discussion')),
+      appBar: AppBar(title: Text('secret_discussion'.tr())),
       body: _ChatErrorListener(
         child: Column(
         children: [
@@ -190,8 +191,8 @@ class _ChatThreadPageState extends State<ChatThreadPage> {
                 Expanded(
                   child: TextField(
                     controller: _controller,
-                    decoration: const InputDecoration(
-                      hintText: 'Message…',
+                    decoration: InputDecoration(
+                      hintText: 'message_hint'.tr(),
                     ),
                   ),
                 ),

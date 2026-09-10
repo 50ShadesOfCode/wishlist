@@ -17,7 +17,10 @@ class ChatMessageModel extends ChatMessage {
         senderId: json['sender_id'] as String,
         text: json['text'] as String?,
         imageUrl: json['image_url'] as String?,
-        createdAt: DateTime.parse(json['created_at'] as String),
+        // Never let one malformed document kill the messages stream.
+        createdAt:
+            DateTime.tryParse(json['created_at'] as String? ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0),
       );
 
   Map<String, dynamic> toJson() => {
@@ -45,7 +48,9 @@ class ChatThreadModel extends ChatThread {
         ownerId: json['owner_id'] as String,
         participantIds:
             (json['participant_ids'] as List?)?.cast<String>() ?? const [],
-        createdAt: DateTime.parse(json['created_at'] as String),
+        createdAt:
+            DateTime.tryParse(json['created_at'] as String? ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0),
       );
 
   Map<String, dynamic> toJson() => {

@@ -15,6 +15,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<SignOutRequested>(_onSignOut);
     on<PasswordResetRequested>(_onReset);
     on<DeleteAccountRequested>(_onDeleteAccount);
+    on<AuthErrorCleared>(_onErrorCleared);
   }
 
   final AuthRepository _repo;
@@ -85,6 +86,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           isLoading: false,
         ),
       );
+    } on AuthCancelledFailure {
+      // Picker dismissed: stop loading silently, no error snackbar.
+      emit(state.copyWith(isLoading: false));
     } on Failure catch (f) {
       emit(state.copyWith(isLoading: false, error: f.message));
     } catch (e) {
@@ -103,6 +107,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           isLoading: false,
         ),
       );
+    } on AuthCancelledFailure {
+      // Picker dismissed: stop loading silently, no error snackbar.
+      emit(state.copyWith(isLoading: false));
     } on Failure catch (f) {
       emit(state.copyWith(isLoading: false, error: f.message));
     } catch (e) {
@@ -137,13 +144,22 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     PasswordResetRequested e,
     Emitter<AuthState> emit,
   ) async {
+    emit(state.copyWith(isLoading: true, error: null, passwordResetSent: false));
     try {
       await _repo.sendPasswordReset(e.email);
-      emit(state.copyWith(error: null));
+      // Success is signaled explicitly so the page shows the confirmation
+      // only after the request actually completes.
+      emit(state.copyWith(isLoading: false, passwordResetSent: true));
     } on Failure catch (f) {
-      emit(state.copyWith(error: f.message));
+      emit(state.copyWith(isLoading: false, error: f.message));
     } catch (e) {
-      emit(state.copyWith(error: e.toString()));
+      emit(state.copyWith(isLoading: false, error: e.toString()));
     }
+  }
+
+  void _onErrorCleared(AuthErrorCleared e, Emitter<AuthState> emit) {
+    // copyWith() without `error` clears it (transient semantics) while the
+    // user/status sentinel preserves the session.
+    emit(state.copyWith(passwordResetSent: false));
   }
 }

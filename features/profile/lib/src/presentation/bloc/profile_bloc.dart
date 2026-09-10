@@ -1,3 +1,4 @@
+import 'package:core/core.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../domain/entities/profile.dart';
@@ -19,6 +20,8 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
     try {
       final p = await _repo.getProfile(e.userId);
       emit(state.copyWith(profile: p, isLoading: false));
+    } on Failure catch (f) {
+      emit(state.copyWith(isLoading: false, error: f.message));
     } catch (err) {
       emit(state.copyWith(isLoading: false, error: err.toString()));
     }
@@ -29,6 +32,8 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
     try {
       final p = await _repo.updateProfile(e.profile);
       emit(state.copyWith(profile: p, isLoading: false));
+    } on Failure catch (f) {
+      emit(state.copyWith(isLoading: false, error: f.message));
     } catch (err) {
       emit(state.copyWith(isLoading: false, error: err.toString()));
     }

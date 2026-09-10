@@ -1,4 +1,5 @@
 import 'package:core_ui/core_ui.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
@@ -20,6 +21,9 @@ class ProfilePage extends StatefulWidget {
     this.onChangeTheme,
     this.onChangePassword,
     this.isDark = false,
+    this.initialLocale = const Locale('en'),
+    this.supportedLocales = const [Locale('en'), Locale('ru')],
+    this.onChangeLocale,
   });
 
   final String userId;
@@ -28,6 +32,9 @@ class ProfilePage extends StatefulWidget {
   final ValueChanged<bool>? onChangeTheme;
   final VoidCallback? onChangePassword;
   final bool isDark;
+  final Locale initialLocale;
+  final List<Locale> supportedLocales;
+  final ValueChanged<Locale>? onChangeLocale;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -65,7 +72,7 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile & Settings')),
+      appBar: AppBar(title: Text('profile_settings'.tr())),
       body: BlocListener<ProfileBloc, ProfileState>(
         listenWhen: (prev, curr) =>
             prev.error != curr.error && curr.error != null,
@@ -89,7 +96,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text('Tap avatar to change picture'),
+                Text('tap_avatar'.tr()),
                 const SizedBox(height: 16),
                 FormBuilder(
                   key: _formKey,
@@ -101,9 +108,14 @@ class _ProfilePageState extends State<ProfilePage> {
                     children: [
                       FormBuilderTextField(
                         name: 'username',
-                        validator: FormBuilderValidators.required(),
-                        decoration: const InputDecoration(
-                          labelText: 'Username',
+                        // Mirrors Validators.isValidUsername (3..30 chars).
+                        validator: FormBuilderValidators.compose([
+                          FormBuilderValidators.required(),
+                          FormBuilderValidators.minLength(3),
+                          FormBuilderValidators.maxLength(30),
+                        ]),
+                        decoration: InputDecoration(
+                          labelText: 'username'.tr(),
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -111,18 +123,18 @@ class _ProfilePageState extends State<ProfilePage> {
                         name: 'dob',
                         initialValue: profile.dateOfBirth,
                         inputType: InputType.date,
-                        decoration: const InputDecoration(
-                          labelText: 'Date of birth',
+                        decoration: InputDecoration(
+                          labelText: 'dob'.tr(),
                         ),
                       ),
                       const SizedBox(height: 12),
                       FormBuilderTextField(
                         name: 'city',
-                        decoration: const InputDecoration(labelText: 'City'),
+                        decoration: InputDecoration(labelText: 'city'.tr()),
                       ),
                       const SizedBox(height: 16),
                       AppButton(
-                        label: 'Save profile',
+                        label: 'save_profile'.tr(),
                         isLoading: state.isLoading,
                         onPressed: () {
                           if (_formKey.currentState?.saveAndValidate() ??
@@ -145,7 +157,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 const Divider(height: 32),
                 SwitchListTile(
-                  title: const Text('Dark theme'),
+                  title: Text('dark_theme'.tr()),
                   value: _dark,
                   onChanged: (v) {
                     setState(() => _dark = v);
@@ -153,37 +165,56 @@ class _ProfilePageState extends State<ProfilePage> {
                   },
                 ),
                 ListTile(
+                  leading: const Icon(Icons.language_outlined),
+                  title: Text('language'.tr()),
+                  trailing: DropdownButton<Locale>(
+                    value: widget.supportedLocales.contains(context.locale)
+                        ? context.locale
+                        : widget.initialLocale,
+                    underline: const SizedBox.shrink(),
+                    items: widget.supportedLocales
+                        .map(
+                          (l) => DropdownMenuItem(
+                            value: l,
+                            child: Text(l.languageCode.toUpperCase()),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (l) {
+                      if (l != null) widget.onChangeLocale?.call(l);
+                    },
+                  ),
+                ),
+                ListTile(
                   leading: const Icon(Icons.lock_outline),
-                  title: const Text('Change password'),
+                  title: Text('change_password'.tr()),
                   onTap: widget.onChangePassword,
                 ),
                 ListTile(
                   leading: const Icon(Icons.logout),
-                  title: const Text('Log out'),
+                  title: Text('logout'.tr()),
                   onTap: widget.onLogout,
                 ),
                 ListTile(
                   leading: const Icon(Icons.delete_forever, color: Colors.red),
-                  title: const Text(
-                    'Delete account',
-                    style: TextStyle(color: Colors.red),
+                  title: Text(
+                    'delete_account'.tr(),
+                    style: const TextStyle(color: Colors.red),
                   ),
                   onTap: () async {
                     final ok = await showDialog<bool>(
                       context: context,
                       builder: (_) => AlertDialog(
-                        title: const Text('Delete account?'),
-                        content: const Text(
-                          'This will permanently delete your account.',
-                        ),
+                        title: Text('delete_confirm_title'.tr()),
+                        content: Text('delete_confirm_body'.tr()),
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.pop(context, false),
-                            child: const Text('Cancel'),
+                            child: Text('cancel'.tr()),
                           ),
                           TextButton(
                             onPressed: () => Navigator.pop(context, true),
-                            child: const Text('Delete'),
+                            child: Text('delete'.tr()),
                           ),
                         ],
                       ),

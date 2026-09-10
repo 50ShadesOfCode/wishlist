@@ -56,6 +56,9 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       final user = await _remote.signInWithGoogle();
       return await _cacheAndReturn(user);
+    } on AuthCancelledException {
+      // User dismissed the picker: silent, never an error snackbar.
+      throw const AuthCancelledFailure();
     } on AuthException catch (e) {
       throw AuthFailure(e.message);
     } catch (e) {
@@ -68,6 +71,9 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       final user = await _remote.signInWithApple();
       return await _cacheAndReturn(user);
+    } on AuthCancelledException {
+      // User dismissed the picker: silent, never an error snackbar.
+      throw const AuthCancelledFailure();
     } on AuthException catch (e) {
       throw AuthFailure(e.message);
     } catch (e) {
@@ -77,22 +83,41 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> signOut() async {
-    await _remote.signOut();
-    await _local.clear();
+    try {
+      await _remote.signOut();
+      await _local.clear();
+    } on AuthException catch (e) {
+      throw AuthFailure(e.message);
+    }
   }
 
   @override
-  Future<void> sendPasswordReset(String email) =>
-      _remote.sendPasswordReset(email);
+  Future<void> sendPasswordReset(String email) async {
+    try {
+      await _remote.sendPasswordReset(email);
+    } on AuthException catch (e) {
+      throw AuthFailure(e.message);
+    } catch (e) {
+      throw ServerFailure(e.toString());
+    }
+  }
 
   @override
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,
-  }) => _remote.changePassword(
-    currentPassword: currentPassword,
-    newPassword: newPassword,
-  );
+  }) async {
+    try {
+      await _remote.changePassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+    } on AuthException catch (e) {
+      throw AuthFailure(e.message);
+    } catch (e) {
+      throw ServerFailure(e.toString());
+    }
+  }
 
   @override
   Future<AppUser?> currentUser() async =>

@@ -25,7 +25,10 @@ class WishlistItemModel extends WishlistItem {
         longitude: (json['longitude'] as num?)?.toDouble(),
         placeLabel: json['place_label'] as String?,
         isHidden: json['is_hidden'] as bool? ?? false,
-        createdAt: DateTime.parse(json['created_at'] as String),
+        // Never let one malformed row crash the whole list/watch stream.
+        createdAt:
+            DateTime.tryParse(json['created_at'] as String? ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0),
       );
 
   Map<String, dynamic> toJson() => {

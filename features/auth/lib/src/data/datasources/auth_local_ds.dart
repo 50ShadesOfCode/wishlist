@@ -2,7 +2,9 @@ import 'package:core/core.dart';
 
 import '../models/user_model.dart';
 
-/// Caches last user in Hive + keeps tokens in secure storage.
+/// Caches the last user in Hive for [AuthRepository.currentUser] fallback.
+/// The Firebase SDK persists the session itself, so no tokens are written
+/// here; secure storage is only wiped on sign-out for hygiene.
 class AuthLocalDataSource {
   AuthLocalDataSource(this._cache, this._secure);
   final HiveCacheService _cache;
@@ -14,16 +16,16 @@ class AuthLocalDataSource {
   HiveCacheService get cacheBox => _cache;
 
   Future<void> cacheUser(UserModel user) =>
-      HiveCacheService(_box).put(_key, user.toJson());
+      _cache.put(_key, user.toJson());
 
   Future<UserModel?> cachedUser() async {
-    final json = await HiveCacheService(_box).get(_key);
+    final json = await _cache.get(_key);
     if (json == null) return null;
     return UserModel.fromJson(json);
   }
 
   Future<void> clear() async {
-    await HiveCacheService(_box).delete(_key);
+    await _cache.delete(_key);
     await _secure.clear();
     // Per-user caches hold PII and must not survive sign-out (or account
     // deletion). Best-effort: sign-out itself must not fail over cache.

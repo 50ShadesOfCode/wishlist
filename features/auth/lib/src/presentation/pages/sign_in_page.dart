@@ -1,4 +1,5 @@
 import 'package:core_ui/core_ui.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
@@ -26,14 +27,18 @@ class _SignInPageState extends State<SignInPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Sign in')),
+      appBar: AppBar(title: Text('sign_in'.tr())),
       body: BlocConsumer<AuthBloc, AuthState>(
-        listener: (_, s) {
+        listenWhen: (prev, curr) =>
+            prev.error != curr.error && curr.error != null,
+        listener: (context, s) {
           if (s.status == AuthStatus.authenticated) widget.onSuccess?.call();
           if (s.error != null) {
             ScaffoldMessenger.of(
               context,
             ).showSnackBar(SnackBar(content: Text(s.error!)));
+            // Clear so rebuilds never re-fire the same snackbar.
+            context.read<AuthBloc>().add(const AuthErrorCleared());
           }
         },
         builder: (context, state) {
@@ -44,10 +49,15 @@ class _SignInPageState extends State<SignInPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const AppTextField(
+                  AppTextField(
                     name: 'email',
-                    label: 'Email',
+                    label: 'email'.tr(),
                     hint: 'you@mail.com',
+                    keyboardType: TextInputType.emailAddress,
+                    validators: FormBuilderValidators.compose([
+                      FormBuilderValidators.required(),
+                      FormBuilderValidators.email(),
+                    ]),
                   ),
                   const SizedBox(height: 12),
                   FormBuilderTextField(
@@ -55,7 +65,7 @@ class _SignInPageState extends State<SignInPage> {
                     obscureText: _obscure,
                     validator: FormBuilderValidators.required(),
                     decoration: InputDecoration(
-                      labelText: 'Password',
+                      labelText: 'password'.tr(),
                       suffixIcon: IconButton(
                         icon: Icon(
                           _obscure ? Icons.visibility : Icons.visibility_off,
@@ -67,7 +77,7 @@ class _SignInPageState extends State<SignInPage> {
                   ),
                   const SizedBox(height: 20),
                   AppButton(
-                    label: 'Sign in',
+                    label: 'sign_in'.tr(),
                     isLoading: state.isLoading,
                     onPressed: () {
                       if (_formKey.currentState?.saveAndValidate() ?? false) {
@@ -83,7 +93,7 @@ class _SignInPageState extends State<SignInPage> {
                   ),
                   const SizedBox(height: 12),
                   AppButton(
-                    label: 'Continue with Google',
+                    label: 'continue_google'.tr(),
                     outlined: true,
                     icon: Icons.g_mobiledata,
                     onPressed: () => context.read<AuthBloc>().add(
@@ -92,7 +102,7 @@ class _SignInPageState extends State<SignInPage> {
                   ),
                   const SizedBox(height: 12),
                   AppButton(
-                    label: 'Continue with Apple',
+                    label: 'continue_apple'.tr(),
                     outlined: true,
                     icon: Icons.apple,
                     onPressed: () => context.read<AuthBloc>().add(
@@ -101,11 +111,11 @@ class _SignInPageState extends State<SignInPage> {
                   ),
                   TextButton(
                     onPressed: widget.onGoReset,
-                    child: const Text('Forgot password?'),
+                    child: Text('forgot_password'.tr()),
                   ),
                   TextButton(
                     onPressed: widget.onGoSignUp,
-                    child: const Text("Don't have an account? Sign up"),
+                    child: Text('no_account_signup'.tr()),
                   ),
                 ],
               ),

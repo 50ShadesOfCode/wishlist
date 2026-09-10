@@ -24,6 +24,11 @@ class AuthFailure extends Failure {
   const AuthFailure([super.message = 'Authentication failure']);
 }
 
+/// User-cancelled sign-in. Handled silently by blocs (no error state).
+class AuthCancelledFailure extends Failure {
+  const AuthCancelledFailure() : super('');
+}
+
 class ValidationFailure extends Failure {
   const ValidationFailure([super.message = 'Validation failure']);
 }

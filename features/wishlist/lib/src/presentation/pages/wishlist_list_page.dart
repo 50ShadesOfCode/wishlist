@@ -1,17 +1,20 @@
 import 'package:core_ui/core_ui.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../bloc/wishlist_bloc.dart';
+import '../bloc/wishlist_event.dart';
 import '../bloc/wishlist_state.dart';
 
-class WishlistListPage extends StatelessWidget {
+class WishlistListPage extends StatefulWidget {
   const WishlistListPage({
     super.key,
     required this.ownerId,
     this.isOwner = true,
     this.onOpenItem,
     this.onAdd,
+    this.onSubscribe,
   });
 
   final String ownerId;
@@ -19,24 +22,73 @@ class WishlistListPage extends StatelessWidget {
   final void Function(String itemId)? onOpenItem;
   final VoidCallback? onAdd;
 
+  /// Called when a viewer taps subscribe on someone else's list. Null hides
+  /// any subscribe affordance handling (button falls back to a snackbar).
+  final Future<void> Function()? onSubscribe;
+
+  @override
+  State<WishlistListPage> createState() => _WishlistListPageState();
+}
+
+class _WishlistListPageState extends State<WishlistListPage> {
+  @override
+  void initState() {
+    super.initState();
+    // Dispatched once here (not in the router builder) so rebuilds don't
+    // re-trigger loads and flicker the list.
+    context.read<WishlistBloc>().add(WishlistLoad(widget.ownerId));
+  }
+
+  @override
+  void didUpdateWidget(WishlistListPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.ownerId != widget.ownerId) {
+      context.read<WishlistBloc>().add(WishlistLoad(widget.ownerId));
+    }
+  }
+
+  Future<void> _subscribe() async {
+    final subscribe = widget.onSubscribe;
+    if (subscribe == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('subscribed'.tr())),
+      );
+      return;
+    }
+    try {
+      await subscribe();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('subscribed'.tr())),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${'subscribe_failed'.tr()}: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(isOwner ? 'My wishlist' : 'Wishlist'),
+        title: Text(widget.isOwner ? 'my_wishlist'.tr() : 'wishlist'.tr()),
         actions: [
-          if (!isOwner)
+          if (!widget.isOwner)
             IconButton(
               icon: const Icon(Icons.notifications_outlined),
-              tooltip: 'Subscribe to updates',
-              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Subscribed to updates')),
-              ),
+              tooltip: 'subscribe_updates'.tr(),
+              onPressed: _subscribe,
             ),
         ],
       ),
-      floatingActionButton: isOwner && onAdd != null
-          ? FloatingActionButton(onPressed: onAdd, child: const Icon(Icons.add))
+      floatingActionButton: widget.isOwner && widget.onAdd != null
+          ? FloatingActionButton(
+              onPressed: widget.onAdd,
+              child: const Icon(Icons.add),
+            )
           : null,
       body: BlocBuilder<WishlistBloc, WishlistState>(
         builder: (context, state) {
@@ -51,9 +103,9 @@ class WishlistListPage extends StatelessWidget {
             );
           }
           if (state.items.isEmpty) {
-            return const EmptyState(
-              title: 'No items yet',
-              subtitle: 'Add your first wish to start your wishlist.',
+            return EmptyState(
+              title: 'no_items'.tr(),
+              subtitle: 'no_items_hint'.tr(),
             );
           }
           return AppSkeleton(
@@ -66,7 +118,7 @@ class WishlistListPage extends StatelessWidget {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: AppCard(
-                    onTap: () => onOpenItem?.call(item.id),
+                    onTap: () => widget.onOpenItem?.call(item.id),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [

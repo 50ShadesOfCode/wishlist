@@ -84,7 +84,7 @@ class AuthRemoteDataSource {
     try {
       final googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
-        throw const AuthException('Google sign in cancelled');
+        throw const AuthCancelledException();
       }
       final googleAuth = await googleUser.authentication;
       final credential = GoogleAuthProvider.credential(
@@ -97,6 +97,8 @@ class AuthRemoteDataSource {
       return _toModel(user);
     } on FirebaseAuthException catch (e) {
       _throwAuth(e);
+    } on AuthCancelledException {
+      rethrow;
     } on AuthException {
       rethrow;
     } catch (e) {
@@ -122,11 +124,13 @@ class AuthRemoteDataSource {
       return _toModel(user);
     } on FirebaseAuthException catch (e) {
       _throwAuth(e);
+    } on AuthCancelledException {
+      rethrow;
     } on AuthException {
       rethrow;
     } on SignInWithAppleAuthorizationException catch (e) {
       if (e.code == AuthorizationErrorCode.canceled) {
-        throw const AuthException('Apple sign in cancelled');
+        throw const AuthCancelledException();
       }
       throw AuthException(e.message);
     } catch (e) {

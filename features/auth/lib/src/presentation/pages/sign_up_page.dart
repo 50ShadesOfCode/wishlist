@@ -1,4 +1,5 @@
 import 'package:core_ui/core_ui.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
@@ -18,14 +19,18 @@ class SignUpPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final formKey = GlobalKey<FormBuilderState>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Sign up')),
+      appBar: AppBar(title: Text('sign_up'.tr())),
       body: BlocConsumer<AuthBloc, AuthState>(
-        listener: (_, s) {
+        listenWhen: (prev, curr) =>
+            prev.error != curr.error && curr.error != null,
+        listener: (context, s) {
           if (s.status == AuthStatus.authenticated) onSuccess?.call();
           if (s.error != null) {
             ScaffoldMessenger.of(
               context,
             ).showSnackBar(SnackBar(content: Text(s.error!)));
+            // Clear so rebuilds never re-fire the same snackbar.
+            context.read<AuthBloc>().add(const AuthErrorCleared());
           }
         },
         builder: (context, state) {
@@ -42,7 +47,7 @@ class SignUpPage extends StatelessWidget {
                       FormBuilderValidators.required(),
                       FormBuilderValidators.email(),
                     ]),
-                    decoration: const InputDecoration(labelText: 'Email'),
+                    decoration: InputDecoration(labelText: 'email'.tr()),
                   ),
                   const SizedBox(height: 12),
                   FormBuilderTextField(
@@ -52,11 +57,11 @@ class SignUpPage extends StatelessWidget {
                       FormBuilderValidators.required(),
                       FormBuilderValidators.minLength(6),
                     ]),
-                    decoration: const InputDecoration(labelText: 'Password'),
+                    decoration: InputDecoration(labelText: 'password'.tr()),
                   ),
                   const SizedBox(height: 20),
                   AppButton(
-                    label: 'Create account',
+                    label: 'create_account'.tr(),
                     isLoading: state.isLoading,
                     onPressed: () {
                       if (formKey.currentState?.saveAndValidate() ?? false) {
@@ -72,7 +77,7 @@ class SignUpPage extends StatelessWidget {
                   ),
                   TextButton(
                     onPressed: onGoSignIn,
-                    child: const Text('Already have an account? Sign in'),
+                    child: Text('have_account_signin'.tr()),
                   ),
                 ],
               ),

@@ -1,5 +1,7 @@
 import 'package:auth/auth.dart';
 import 'package:chat/chat.dart';
+import 'package:core/core.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +9,7 @@ import 'package:profile/profile.dart';
 import 'package:wishlist/wishlist.dart';
 
 import '../di/injection.dart';
+import '../services/theme_controller.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -61,9 +64,10 @@ GoRouter createRouter(AuthBloc authBloc) {
                 builder: (context, _) {
                   final userId =
                       authBloc.state.user?.id ?? 'local-user';
-                  // Singleton bloc shared with the edit sub-route below.
-                  final bloc = sl<WishlistBloc>()
-                    ..add(WishlistLoad(userId));
+                  // Singleton bloc shared with the edit sub-route below. The
+                  // initial load is dispatched once in WishlistListPage
+                  // initState; do not add it here or rebuilds refetch.
+                  final bloc = sl<WishlistBloc>();
                   return BlocProvider.value(
                     value: bloc,
                     child: WishlistListPage(
@@ -138,6 +142,17 @@ GoRouter createRouter(AuthBloc authBloc) {
                   value: sl<ProfileBloc>(),
                   child: ProfilePage(
                     userId: authBloc.state.user?.id ?? 'local-user',
+                    isDark: sl<ThemeController>().isDark,
+                    onChangeTheme: (dark) =>
+                        sl<ThemeController>().setDark(dark),
+                    initialLocale: context.locale,
+                    supportedLocales: context.supportedLocales,
+                    onChangeLocale: (locale) async {
+                      await context.setLocale(locale);
+                      await sl<PrefsService>().setLocale(
+                        locale.languageCode,
+                      );
+                    },
                     onLogout: () => authBloc.add(const SignOutRequested()),
                     onDeleteAccount: () async {
                       // Order matters: the Supabase profile row must go first
@@ -198,13 +213,19 @@ class HomeShell extends StatelessWidget {
       bottomNavigationBar: NavigationBar(
         selectedIndex: shell.currentIndex,
         onDestinationSelected: shell.goBranch,
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.card_giftcard),
-            label: 'Wishlist',
+            icon: const Icon(Icons.card_giftcard),
+            label: 'wishlist'.tr(),
           ),
-          NavigationDestination(icon: Icon(Icons.chat_bubble), label: 'Chats'),
-          NavigationDestination(icon: Icon(Icons.person), label: 'Profile'),
+          NavigationDestination(
+            icon: const Icon(Icons.chat_bubble),
+            label: 'chats'.tr(),
+          ),
+          NavigationDestination(
+            icon: const Icon(Icons.person),
+            label: 'profile'.tr(),
+          ),
         ],
       ),
     );

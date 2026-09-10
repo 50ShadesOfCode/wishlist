@@ -1,3 +1,4 @@
+import 'package:core/core.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../domain/entities/chat_message.dart';
@@ -44,6 +45,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         senderId: e.senderId,
         text: e.text,
       );
+    } on Failure catch (f) {
+      emit(state.copyWith(error: f.message));
     } catch (err) {
       emit(state.copyWith(error: err.toString()));
     }
@@ -56,6 +59,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         senderId: e.senderId,
         localImagePath: e.localPath,
       );
+    } on Failure catch (f) {
+      emit(state.copyWith(error: f.message));
     } catch (err) {
       emit(state.copyWith(error: err.toString()));
     }

@@ -17,3 +17,9 @@ class NotFoundException implements Exception {
   const NotFoundException([this.message = 'Not found']);
   final String message;
 }
+
+/// The user dismissed a system account picker (Google/Apple). Not an error:
+/// callers translate this into a silent no-op, never an error snackbar.
+class AuthCancelledException implements Exception {
+  const AuthCancelledException();
+}

@@ -1,4 +1,6 @@
 import 'package:core/core.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../domain/entities/chat_message.dart';
 import '../../domain/repositories/chat_repository.dart';
@@ -11,6 +13,18 @@ class ChatRepositoryImpl implements ChatRepository {
 
   final ChatRemoteDataSource _remote;
   final ChatPhotoStorage? _photoStorage;
+
+  /// Maps backend errors to the [Failure] taxonomy so blocs can rely on
+  /// `on Failure` instead of formatting raw exceptions.
+  Never _asFailure(Object e) {
+    if (e is Failure) throw e;
+    if (e is FirebaseException) {
+      throw ServerFailure(e.message ?? 'Chat operation failed');
+    }
+    if (e is PostgrestException) throw ServerFailure(e.message);
+    if (e is StorageException) throw ServerFailure(e.message);
+    throw ServerFailure(e.toString());
+  }
 
   @override
   Stream<List<ChatThread>> watchThreadsForUser(String userId) =>
@@ -25,26 +39,38 @@ class ChatRepositoryImpl implements ChatRepository {
     required String wishlistItemId,
     required String ownerId,
     required List<String> participantIds,
-  }) => _remote.createThread(
-    wishlistItemId: wishlistItemId,
-    ownerId: ownerId,
-    participantIds: participantIds,
-  );
+  }) async {
+    try {
+      return await _remote.createThread(
+        wishlistItemId: wishlistItemId,
+        ownerId: ownerId,
+        participantIds: participantIds,
+      );
+    } catch (e) {
+      _asFailure(e);
+    }
+  }
 
   @override
   Future<ChatMessage> sendText({
     required String chatId,
     required String senderId,
     required String text,
-  }) => _remote.sendMessage(
-    ChatMessageModel(
-      id: generateId(),
-      chatId: chatId,
-      senderId: senderId,
-      text: text,
-      createdAt: DateTime.now(),
-    ),
-  );
+  }) async {
+    try {
+      return await _remote.sendMessage(
+        ChatMessageModel(
+          id: generateId(),
+          chatId: chatId,
+          senderId: senderId,
+          text: text,
+          createdAt: DateTime.now(),
+        ),
+      );
+    } catch (e) {
+      _asFailure(e);
+    }
+  }
 
   @override
   Future<ChatMessage> sendPhoto({
@@ -58,26 +84,41 @@ class ChatRepositoryImpl implements ChatRepository {
     }
     // Upload first so the persisted message carries a public URL readable
     // by all participants — never a sender-local device path.
-    final imageUrl = await storage.upload(
-      senderId: senderId,
-      chatId: chatId,
-      filePath: localImagePath,
-    );
-    return _remote.sendMessage(
-      ChatMessageModel(
-        id: generateId(),
-        chatId: chatId,
+    try {
+      final imageUrl = await storage.upload(
         senderId: senderId,
-        imageUrl: imageUrl,
-        createdAt: DateTime.now(),
-      ),
-    );
+        chatId: chatId,
+        filePath: localImagePath,
+      );
+      return await _remote.sendMessage(
+        ChatMessageModel(
+          id: generateId(),
+          chatId: chatId,
+          senderId: senderId,
+          imageUrl: imageUrl,
+          createdAt: DateTime.now(),
+        ),
+      );
+    } catch (e) {
+      _asFailure(e);
+    }
   }
 
   @override
-  Future<void> deleteChatsForItem(String wishlistItemId) =>
-      _remote.deleteChatsForItem(wishlistItemId);
+  Future<void> deleteChatsForItem(String wishlistItemId) async {
+    try {
+      await _remote.deleteChatsForItem(wishlistItemId);
+    } catch (e) {
+      _asFailure(e);
+    }
+  }
 
   @override
-  Future<void> deleteThread(String chatId) => _remote.deleteThread(chatId);
+  Future<void> deleteThread(String chatId) async {
+    try {
+      await _remote.deleteThread(chatId);
+    } catch (e) {
+      _asFailure(e);
+    }
+  }
 }

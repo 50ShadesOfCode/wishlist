@@ -19,6 +19,13 @@ class ProfileRemoteDataSource {
     return ProfileModel.fromJson(row);
   }
 
+  /// Live updates for one profile (Supabase Realtime).
+  Stream<ProfileModel?> watchProfile(String userId) => _client
+      .from(AppConstants.profilesTable)
+      .stream(primaryKey: ['user_id'])
+      .eq('user_id', userId)
+      .map((rows) => rows.isEmpty ? null : ProfileModel.fromJson(rows.first));
+
   Future<ProfileModel> upsertProfile(ProfileModel profile) async {
     final row = await _client
         .from(AppConstants.profilesTable)

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:core/core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../domain/entities/wishlist_item.dart';
 import '../models/wishlist_item_model.dart';
 
 class WishlistRemoteDataSource {
@@ -37,6 +38,16 @@ class WishlistRemoteDataSource {
     if (row == null) return null;
     return WishlistItemModel.fromJson(row);
   }
+
+  /// Live updates for one owner's items (Supabase Realtime).
+  Stream<List<WishlistItemModel>> watchMine(String ownerId) => _client
+      .from(AppConstants.wishlistItemsTable)
+      .stream(primaryKey: ['id'])
+      .eq('owner_id', ownerId)
+      .order('created_at')
+      .map(
+        (rows) => rows.map(WishlistItemModel.fromJson).toList(),
+      );
 
   Future<WishlistItemModel> insert(WishlistItemModel item) async {
     final row = await _client
@@ -107,4 +118,24 @@ class WishlistRemoteDataSource {
           .delete()
           .eq('subscriber_id', subscriberId)
           .eq('target_user_id', targetUserId);
+
+  Future<List<Subscription>> fetchSubscriptions(String subscriberId) async {
+    final rows = await _client
+        .from(AppConstants.subscriptionsTable)
+        .select()
+        .eq('subscriber_id', subscriberId);
+    return (rows as List)
+        .whereType<Map<String, dynamic>>()
+        .map(
+          (m) => Subscription(
+            subscriberId: m['subscriber_id'] as String? ?? subscriberId,
+            targetUserId: m['target_user_id'] as String? ?? '',
+            createdAt:
+                DateTime.tryParse(m['created_at'] as String? ?? '') ??
+                DateTime.fromMillisecondsSinceEpoch(0),
+          ),
+        )
+        .where((s) => s.targetUserId.isNotEmpty)
+        .toList();
+  }
 }

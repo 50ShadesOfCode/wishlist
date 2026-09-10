@@ -12,6 +12,7 @@ import 'package:wishlist/wishlist.dart';
 
 import '../services/notification_service.dart';
 import '../services/supabase_session_bridge.dart';
+import '../services/theme_controller.dart';
 
 final sl = GetIt.instance;
 
@@ -23,6 +24,9 @@ Future<void> configureDependencies() async {
   );
   sl.registerLazySingleton<NotificationService>(
     () => NotificationService(sl<FlutterLocalNotificationsPlugin>()),
+  );
+  sl.registerLazySingleton<ThemeController>(
+    () => ThemeController(sl<PrefsService>()),
   );
 
   // Supabase must be initialized before this (see main.dart).
@@ -62,6 +66,7 @@ Future<void> configureDependencies() async {
     () => ProfileRepositoryImpl(
       sl<ProfileRemoteDataSource>(),
       HiveCacheService(AppConstants.profileCacheBox),
+      sl<NetworkInfo>(),
     ),
   );
   sl.registerLazySingleton<ProfileBloc>(
@@ -77,6 +82,7 @@ Future<void> configureDependencies() async {
       sl<WishlistRemoteDataSource>(),
       HiveCacheService(AppConstants.wishlistCacheBox),
       sl<FlutterLocalNotificationsPlugin>(),
+      sl<NetworkInfo>(),
     ),
   );
   sl.registerLazySingleton<WishlistBloc>(

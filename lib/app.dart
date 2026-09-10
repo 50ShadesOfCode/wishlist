@@ -11,6 +11,7 @@ import 'package:profile/profile.dart';
 import 'di/injection.dart';
 import 'router/app_router.dart';
 import 'services/supabase_session_bridge.dart';
+import 'services/theme_controller.dart';
 
 class WishlistApp extends StatefulWidget {
   const WishlistApp({super.key});
@@ -22,7 +23,7 @@ class WishlistApp extends StatefulWidget {
 class _WishlistAppState extends State<WishlistApp> {
   late final AuthBloc _authBloc;
   late final GoRouter _router;
-  final ThemeMode _mode = ThemeMode.system;
+  late final ThemeController _theme;
   StreamSubscription<AuthState>? _authSub;
   String? _profileEnsuredFor;
 
@@ -30,6 +31,7 @@ class _WishlistAppState extends State<WishlistApp> {
   void initState() {
     super.initState();
     _authBloc = sl<AuthBloc>()..add(const AuthChecked());
+    _theme = sl<ThemeController>();
     // Created once: rebuilding GoRouter would reset the navigation stack.
     // Auth-driven redirects are handled by refreshListenable inside.
     _router = createRouter(_authBloc);
@@ -79,15 +81,18 @@ class _WishlistAppState extends State<WishlistApp> {
   Widget build(BuildContext context) {
     return BlocProvider.value(
       value: _authBloc,
-      child: MaterialApp.router(
-        title: 'Wishlist',
-        theme: AppTheme.light(),
-        darkTheme: AppTheme.dark(),
-        themeMode: _mode,
-        locale: context.locale,
-        supportedLocales: context.supportedLocales,
-        localizationsDelegates: context.localizationDelegates,
-        routerConfig: _router,
+      child: ListenableBuilder(
+        listenable: _theme,
+        builder: (_, _) => MaterialApp.router(
+          title: 'Wishlist',
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
+          themeMode: _theme.mode,
+          locale: context.locale,
+          supportedLocales: context.supportedLocales,
+          localizationsDelegates: context.localizationDelegates,
+          routerConfig: _router,
+        ),
       ),
     );
   }

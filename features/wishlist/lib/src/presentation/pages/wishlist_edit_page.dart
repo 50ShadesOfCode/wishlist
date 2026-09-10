@@ -1,5 +1,6 @@
 import 'package:core/core.dart';
 import 'package:core_ui/core_ui.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
@@ -77,7 +78,7 @@ class _WishlistEditPageState extends State<WishlistEditPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.existing == null ? 'Add wish' : 'Edit wish'),
+        title: Text(widget.existing == null ? 'add_wish'.tr() : 'edit_wish'.tr()),
         actions: [
           if (widget.existing != null)
             IconButton(
@@ -105,7 +106,7 @@ class _WishlistEditPageState extends State<WishlistEditPage> {
             children: [
               if (_images.isNotEmpty) ItemCarousel(imageUrls: _images),
               AppButton(
-                label: 'Pick images',
+                label: 'pick_images'.tr(),
                 outlined: true,
                 icon: Icons.photo_library_outlined,
                 onPressed: _pickImages,
@@ -114,35 +115,35 @@ class _WishlistEditPageState extends State<WishlistEditPage> {
               FormBuilderTextField(
                 name: 'name',
                 validator: FormBuilderValidators.required(),
-                decoration: const InputDecoration(labelText: 'Name'),
+                decoration: InputDecoration(labelText: 'name'.tr()),
               ),
               const SizedBox(height: 12),
               FormBuilderTextField(
                 name: 'description',
                 maxLines: 3,
-                decoration: const InputDecoration(labelText: 'Description'),
+                decoration: InputDecoration(labelText: 'description'.tr()),
               ),
               const SizedBox(height: 12),
               FormBuilderTextField(
                 name: 'place',
-                decoration: const InputDecoration(
-                  labelText: 'Place label (e.g. store name)',
+                decoration: InputDecoration(
+                  labelText: 'place_label'.tr(),
                 ),
               ),
               const SizedBox(height: 12),
-              const Text('Mark place on map where this item sells'),
+              Text('mark_place'.tr()),
               const SizedBox(height: 8),
               MapPicker(
                 initial: _place,
                 onPicked: (p) => setState(() => _place = p),
               ),
               SwitchListTile(
-                title: const Text('Hide from others'),
+                title: Text('hide_from_others'.tr()),
                 value: _hidden,
                 onChanged: (v) => setState(() => _hidden = v),
               ),
               const SizedBox(height: 12),
-              AppButton(label: 'Save', onPressed: _save),
+              AppButton(label: 'save'.tr(), onPressed: _save),
             ],
           ),
         ),

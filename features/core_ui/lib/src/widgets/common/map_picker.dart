@@ -8,6 +8,21 @@ class MapPicker extends StatefulWidget {
   final LatLng? initial;
   final ValueChanged<LatLng> onPicked;
 
+  /// Default map center (Tashkent) when no location is picked yet.
+  static const defaultCenter = LatLng(41.3111, 69.2406);
+
+  /// Override at build time without touching source:
+  /// `flutter run --dart-define=MAP_TILE_KEY=<key>`.
+  /// The default below is a throwaway key — rotate it in the Tracetrack
+  /// dashboard and stop committing real keys to the repo.
+  static const tileKey = String.fromEnvironment(
+    'MAP_TILE_KEY',
+    defaultValue: 'cddcacc4f087563b33be09cfba45747f',
+  );
+
+  static String get tileTemplate =>
+      'https://tile.tracestrack.com/_/{z}/{x}/{y}.webp?key=$tileKey';
+
   @override
   State<MapPicker> createState() => _MapPickerState();
 }
@@ -23,7 +38,7 @@ class _MapPickerState extends State<MapPicker> {
 
   @override
   Widget build(BuildContext context) {
-    final center = _picked ?? const LatLng(41.3111, 69.2406);
+    final center = _picked ?? MapPicker.defaultCenter;
     return SizedBox(
       height: 260,
       child: ClipRRect(
@@ -39,8 +54,7 @@ class _MapPickerState extends State<MapPicker> {
           ),
           children: [
             TileLayer(
-              //urlTemplate: 'http://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              urlTemplate: 'https://tile.tracestrack.com/_/{z}/{x}/{y}.webp?key=cddcacc4f087563b33be09cfba45747f',
+              urlTemplate: MapPicker.tileTemplate,
               userAgentPackageName: 'com.wishlist.wishlist_app',
             ),
             if (_picked != null)

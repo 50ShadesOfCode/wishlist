@@ -4,12 +4,14 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wishlist_app/firebase_options.dart';
 
 import 'app.dart';
 import 'di/injection.dart';
 import 'services/notification_service.dart';
+import 'services/theme_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,13 +46,28 @@ Future<void> main() async {
   try {
     await sl<NotificationService>().init();
   } catch (_) {}
+  // Saved theme (system on first launch); failures keep the default.
+  try {
+    await sl<ThemeController>().load();
+  } catch (_) {}
 
   runApp(
     EasyLocalization(
       supportedLocales: const [Locale('en'), Locale('ru')],
       path: 'assets/translations',
       fallbackLocale: const Locale('en'),
+      startLocale: await _savedLocale(),
       child: const WishlistApp(),
     ),
   );
+}
+
+Future<Locale?> _savedLocale() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final code = prefs.getString(PrefsService.localeKey);
+    return code == null ? null : Locale(code);
+  } catch (_) {
+    return null;
+  }
 }
