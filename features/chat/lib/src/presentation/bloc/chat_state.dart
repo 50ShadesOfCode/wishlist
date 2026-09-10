@@ -8,6 +8,7 @@ class ChatState extends Equatable {
     this.messages = const [],
     this.activeChatId,
     this.error,
+    this.unreadChatIds = const {},
   });
 
   final List<ChatThread> threads;
@@ -18,18 +19,29 @@ class ChatState extends Equatable {
   /// value, matching the other features' error semantics.
   final String? error;
 
+  /// Thread ids with activity the user hasn't opened yet.
+  final Set<String> unreadChatIds;
+
   ChatState copyWith({
     List<ChatThread>? threads,
     List<ChatMessage>? messages,
     String? activeChatId,
     String? error,
+    Set<String>? unreadChatIds,
   }) => ChatState(
     threads: threads ?? this.threads,
     messages: messages ?? this.messages,
     activeChatId: activeChatId ?? this.activeChatId,
     error: error,
+    unreadChatIds: unreadChatIds ?? this.unreadChatIds,
   );
 
   @override
-  List<Object?> get props => [threads, messages, activeChatId, error];
+  List<Object?> get props => [
+    threads,
+    messages,
+    activeChatId,
+    error,
+    unreadChatIds,
+  ];
 }

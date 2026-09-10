@@ -10,9 +10,8 @@ import 'package:profile/profile.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wishlist/wishlist.dart';
 
-import '../services/notification_service.dart';
 import '../services/supabase_session_bridge.dart';
-import '../services/theme_controller.dart';
+import '../services/sync_service.dart';
 
 final sl = GetIt.instance;
 
@@ -27,6 +26,17 @@ Future<void> configureDependencies() async {
   );
   sl.registerLazySingleton<ThemeController>(
     () => ThemeController(sl<PrefsService>()),
+  );
+  sl.registerLazySingleton<OutboxService>(
+    () => OutboxService(HiveCacheService(AppConstants.outboxBox)),
+  );
+  sl.registerLazySingleton<SyncService>(
+    () => SyncService(
+      sl<OutboxService>(),
+      sl<WishlistRepository>(),
+      sl<ProfileRepository>(),
+      sl<NetworkInfo>(),
+    ),
   );
 
   // Supabase must be initialized before this (see main.dart).
@@ -67,6 +77,7 @@ Future<void> configureDependencies() async {
       sl<ProfileRemoteDataSource>(),
       HiveCacheService(AppConstants.profileCacheBox),
       sl<NetworkInfo>(),
+      sl<OutboxService>(),
     ),
   );
   sl.registerLazySingleton<ProfileBloc>(
@@ -83,6 +94,7 @@ Future<void> configureDependencies() async {
       HiveCacheService(AppConstants.wishlistCacheBox),
       sl<FlutterLocalNotificationsPlugin>(),
       sl<NetworkInfo>(),
+      sl<OutboxService>(),
     ),
   );
   sl.registerLazySingleton<WishlistBloc>(
@@ -105,5 +117,16 @@ Future<void> configureDependencies() async {
       photoStorage: sl<ChatPhotoStorage>(),
     ),
   );
-  sl.registerLazySingleton<ChatBloc>(() => ChatBloc(sl<ChatRepository>()));
+  sl.registerLazySingleton<ChatBloc>(
+    () => ChatBloc(
+      sl<ChatRepository>(),
+      onNewMessage: (thread) => sl<NotificationService>().showNewMessage(
+        chatId: thread.id,
+        title: thread.wishlistItemName.isNotEmpty
+            ? thread.wishlistItemName
+            : 'Secret discussion',
+        body: thread.lastMessageText ?? 'New message',
+      ),
+    ),
+  );
 }

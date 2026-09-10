@@ -1,10 +1,11 @@
-import 'package:core/core.dart';
 import 'package:material_ui/material_ui.dart';
+
+import '../storage/prefs_service.dart';
 
 /// App-level theme state, persisted via [PrefsService].
 ///
 /// The profile settings switch writes here (through the router's
-/// `onChangeTheme`); [WishlistApp] listens and rebuilds [MaterialApp.router]
+/// `onChangeTheme`); the app widget listens and rebuilds `MaterialApp.router`
 /// with the selected [mode]. Defaults to system on first launch.
 class ThemeController extends ChangeNotifier {
   ThemeController(this._prefs);

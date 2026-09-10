@@ -258,14 +258,14 @@ packages:
   core:
     dependency: "direct main"
     description:
-      path: "features/core"
+      path: core
       relative: true
     source: path
     version: "0.1.0"
   core_ui:
     dependency: "direct main"
     description:
-      path: "features/core_ui"
+      path: core_ui
       relative: true
     source: path
     version: "0.1.0"

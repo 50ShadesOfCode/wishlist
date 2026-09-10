@@ -14,6 +14,8 @@ class AppConstants {
   static const authCacheBox = 'auth_cache';
   static const profileCacheBox = 'profile_cache';
   static const wishlistCacheBox = 'wishlist_cache';
+  static const chatSeenBox = 'chat_seen';
+  static const outboxBox = 'outbox';
 
   static const defaultPageSize = 20;
 }

@@ -1,9 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wishlist/wishlist.dart';
+
 void main() {
   test('WishlistItem model roundtrip', () {
     final item = WishlistItemModel(
-      id: '1', ownerId: 'u1', name: 'Bike',
+      id: '1',
+      ownerId: 'u1',
+      name: 'Bike',
       createdAt: DateTime.utc(2026, 1, 1),
     );
     final json = item.toJson();
@@ -31,7 +34,9 @@ void main() {
 
   test('toUpdateJson excludes immutable columns', () {
     final item = WishlistItemModel(
-      id: '1', ownerId: 'u1', name: 'Bike',
+      id: '1',
+      ownerId: 'u1',
+      name: 'Bike',
       createdAt: DateTime.utc(2026, 1, 1),
     );
     final json = item.toUpdateJson();
@@ -79,12 +84,14 @@ class _FakeWishlistRepo implements WishlistRepository {
   Future<void> deleteItem(String itemId) async => order.add('item:$itemId');
 
   @override
-  Future<List<WishlistItem>> getMyItems(String ownerId) => throw UnimplementedError();
+  Future<List<WishlistItem>> getMyItems(String ownerId) =>
+      throw UnimplementedError();
   @override
   Future<List<WishlistItem>> getVisibleItems(String ownerId) =>
       throw UnimplementedError();
   @override
-  Future<WishlistItem?> getItemById(String itemId) => throw UnimplementedError();
+  Future<WishlistItem?> getItemById(String itemId) =>
+      throw UnimplementedError();
   @override
   Future<WishlistItem> addItem(WishlistItem item) => throw UnimplementedError();
   @override

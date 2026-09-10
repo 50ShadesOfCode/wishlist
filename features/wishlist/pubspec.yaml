@@ -11,9 +11,9 @@ dependencies:
   flutter:
     sdk: flutter
   core:
-    path: ../core
+    path: ../../core
   core_ui:
-    path: ../core_ui
+    path: ../../core_ui
   material_ui: ^1.2.0
   cupertino_ui: ^1.0.2
   flutter_bloc: ^9.1.1

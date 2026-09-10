@@ -10,8 +10,6 @@ import 'package:wishlist_app/firebase_options.dart';
 
 import 'app.dart';
 import 'di/injection.dart';
-import 'services/notification_service.dart';
-import 'services/theme_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,10 +43,16 @@ Future<void> main() async {
   await configureDependencies();
   try {
     await sl<NotificationService>().init();
+    // Best-effort: the app works without notification permission.
+    await sl<NotificationService>().requestPermissions();
   } catch (_) {}
   // Saved theme (system on first launch); failures keep the default.
   try {
     await sl<ThemeController>().load();
+  } catch (_) {}
+  // Pending offline count for the sync banner; failures show zero.
+  try {
+    await sl<OutboxService>().refresh();
   } catch (_) {}
 
   runApp(

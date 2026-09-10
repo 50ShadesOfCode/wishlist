@@ -3,7 +3,11 @@ import 'package:equatable/equatable.dart';
 import '../../domain/entities/wishlist_item.dart';
 
 class WishlistState extends Equatable {
-  const WishlistState({this.items = const [], this.isLoading = false, this.error});
+  const WishlistState({
+    this.items = const [],
+    this.isLoading = false,
+    this.error,
+  });
 
   final List<WishlistItem> items;
   final bool isLoading;

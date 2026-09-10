@@ -36,27 +36,41 @@ class ChatThreadModel extends ChatThread {
   const ChatThreadModel({
     required super.id,
     required super.wishlistItemId,
+    super.wishlistItemName,
     required super.ownerId,
     required super.participantIds,
     required super.createdAt,
+    super.lastMessageAt,
+    super.lastSenderId,
+    super.lastMessageText,
   });
 
   factory ChatThreadModel.fromJson(String id, Map<String, dynamic> json) =>
       ChatThreadModel(
         id: id,
         wishlistItemId: json['wishlist_item_id'] as String,
+        wishlistItemName: json['wishlist_item_name'] as String? ?? '',
         ownerId: json['owner_id'] as String,
         participantIds:
             (json['participant_ids'] as List?)?.cast<String>() ?? const [],
         createdAt:
             DateTime.tryParse(json['created_at'] as String? ?? '') ??
             DateTime.fromMillisecondsSinceEpoch(0),
+        lastMessageAt: json['last_message_at'] == null
+            ? null
+            : DateTime.tryParse(json['last_message_at'] as String),
+        lastSenderId: json['last_sender_id'] as String?,
+        lastMessageText: json['last_message_text'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
     'wishlist_item_id': wishlistItemId,
+    'wishlist_item_name': wishlistItemName,
     'owner_id': ownerId,
     'participant_ids': participantIds,
     'created_at': createdAt.toIso8601String(),
+    'last_message_at': lastMessageAt?.toIso8601String(),
+    'last_sender_id': lastSenderId,
+    'last_message_text': lastMessageText,
   };
 }

@@ -144,7 +144,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     PasswordResetRequested e,
     Emitter<AuthState> emit,
   ) async {
-    emit(state.copyWith(isLoading: true, error: null, passwordResetSent: false));
+    emit(
+      state.copyWith(isLoading: true, error: null, passwordResetSent: false),
+    );
     try {
       await _repo.sendPasswordReset(e.email);
       // Success is signaled explicitly so the page shows the confirmation

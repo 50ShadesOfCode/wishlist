@@ -1,14 +1,12 @@
-import 'package:core_ui/core_ui.dart';
-import 'package:easy_localization/easy_localization.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:flutter_form_builder/flutter_form_builder.dart';
-import 'package:form_builder_validators/form_builder_validators.dart';
+import 'package:get_it/get_it.dart';
 
 import '../bloc/auth_bloc.dart';
-import '../bloc/auth_event.dart';
-import '../bloc/auth_state.dart';
+import 'sign_up_form.dart';
 
+/// Provides the shared [AuthBloc] singleton and renders [SignUpForm].
+/// Keeps BlocProvider wiring out of the router.
 class SignUpPage extends StatelessWidget {
   const SignUpPage({super.key, this.onGoSignIn, this.onSuccess});
 
@@ -17,74 +15,9 @@ class SignUpPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final formKey = GlobalKey<FormBuilderState>();
-    return Scaffold(
-      appBar: AppBar(title: Text('sign_up'.tr())),
-      body: BlocConsumer<AuthBloc, AuthState>(
-        listenWhen: (prev, curr) =>
-            prev.error != curr.error && curr.error != null,
-        listener: (context, s) {
-          if (s.status == AuthStatus.authenticated) onSuccess?.call();
-          if (s.error != null) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(s.error!)));
-            // Clear so rebuilds never re-fire the same snackbar.
-            context.read<AuthBloc>().add(const AuthErrorCleared());
-          }
-        },
-        builder: (context, state) {
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: FormBuilder(
-              key: formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  FormBuilderTextField(
-                    name: 'email',
-                    validator: FormBuilderValidators.compose([
-                      FormBuilderValidators.required(),
-                      FormBuilderValidators.email(),
-                    ]),
-                    decoration: InputDecoration(labelText: 'email'.tr()),
-                  ),
-                  const SizedBox(height: 12),
-                  FormBuilderTextField(
-                    name: 'password',
-                    obscureText: true,
-                    validator: FormBuilderValidators.compose([
-                      FormBuilderValidators.required(),
-                      FormBuilderValidators.minLength(6),
-                    ]),
-                    decoration: InputDecoration(labelText: 'password'.tr()),
-                  ),
-                  const SizedBox(height: 20),
-                  AppButton(
-                    label: 'create_account'.tr(),
-                    isLoading: state.isLoading,
-                    onPressed: () {
-                      if (formKey.currentState?.saveAndValidate() ?? false) {
-                        final v = formKey.currentState!.value;
-                        context.read<AuthBloc>().add(
-                          SignUpRequested(
-                            v['email'] as String,
-                            v['password'] as String,
-                          ),
-                        );
-                      }
-                    },
-                  ),
-                  TextButton(
-                    onPressed: onGoSignIn,
-                    child: Text('have_account_signin'.tr()),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
+    return BlocProvider.value(
+      value: GetIt.instance<AuthBloc>(),
+      child: SignUpForm(onGoSignIn: onGoSignIn, onSuccess: onSuccess),
     );
   }
 }

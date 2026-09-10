@@ -15,13 +15,15 @@ wishlist_app/                 # runnable Flutter app (Flutter 3.47.3 / Dart 3.13
     app.dart                  # MaterialApp.router, light/dark theme
     di/injection.dart         # get_it wiring for all features
     router/app_router.dart    # go_router: auth guard + bottom-nav shell
-    services/notification_service.dart
+    services/                 # supabase_session_bridge, sync_service
+                              # (theme + notifications live in core/)
   assets/translations/{en,ru}.json
-  features/
-    core/                     # failures, exceptions, usecases, network_info,
-                              # secure/prefs/hive/isar storage, logger, validators
-    core_ui/                  # app_colors, app_fonts, app_dimens, app_theme +
+  core/                       # failures, exceptions, usecases, network_info,
+                              # secure/prefs/hive/outbox storage, logger,
+                              # validators, ThemeController, NotificationService
+  core_ui/                    # app_colors, app_fonts, app_dimens, app_theme +
                               # widgets/material_ui/*, widgets/cupertino_ui/*, widgets/common/*
+  features/
     auth/                     # email/pass + Google + Apple, change/restore password
     profile/                  # picture, username, dob, city + settings
                               # (theme, logout, delete) — Telegram-style combined page

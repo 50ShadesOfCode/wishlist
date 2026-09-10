@@ -13,12 +13,14 @@ class WishlistRepositoryImpl implements WishlistRepository {
     this._cache,
     this._notifications,
     this._network,
+    this._outbox,
   );
 
   final WishlistRemoteDataSource _remote;
   final HiveCacheService _cache;
   final FlutterLocalNotificationsPlugin _notifications;
   final NetworkInfo _network;
+  final OutboxService _outbox;
 
   /// Maps backend errors to the [Failure] taxonomy. Unknown/programming
   /// errors are wrapped as [ServerFailure] so blocs can rely on
@@ -30,18 +32,23 @@ class WishlistRepositoryImpl implements WishlistRepository {
     throw ServerFailure(e.toString());
   }
 
-  /// Mutations require connectivity; reads may fall back to Hive.
-  Future<void> _requireOnline() async {
-    if (!await _network.isConnected) throw const NetworkFailure();
-  }
+  /// Mutations check connectivity inline so offline writes can be queued
+  /// to the outbox instead of failing.
 
   Future<void> _notifyNewItem(WishlistItem item) async {
     await _notifications.show(
-      id: item.hashCode & 0x7fffffff,
+      // Stable per item (no collisions/overwrites across restarts).
+      id: 'item:${item.id}'.hashCode & 0x7fffffff,
       title: 'New wishlist item',
       body: '${item.name} was added',
+      payload: 'item:${item.id}',
       notificationDetails: const NotificationDetails(
-        android: AndroidNotificationDetails('wishlist', 'Wishlist updates'),
+        android: AndroidNotificationDetails(
+          'wishlist',
+          'Wishlist updates',
+          importance: Importance.high,
+        ),
+        iOS: DarwinNotificationDetails(),
       ),
     );
   }
@@ -93,8 +100,7 @@ class WishlistRepositoryImpl implements WishlistRepository {
   }
 
   @override
-  Future<WishlistItem?> getItemById(String itemId) =>
-      _remote.fetchById(itemId);
+  Future<WishlistItem?> getItemById(String itemId) => _remote.fetchById(itemId);
 
   @override
   Future<String> uploadItemImage({
@@ -147,7 +153,14 @@ class WishlistRepositoryImpl implements WishlistRepository {
 
   @override
   Future<WishlistItem> addItem(WishlistItem item) async {
-    await _requireOnline();
+    final model = WishlistItemModel.fromEntity(item);
+    if (!await _network.isConnected) {
+      // Offline: persist to cache now, queue the insert for sync. Local
+      // image paths are kept as-is and uploaded during replay.
+      await _cache.put(_scopedKey(item.ownerId, item.id), model.toJson());
+      await _outbox.enqueue('wishlist_add', model.toJson());
+      return item;
+    }
     final uploaded = <String>[];
     try {
       final urls = await _resolveImageUrls(item, uploaded);
@@ -170,7 +183,12 @@ class WishlistRepositoryImpl implements WishlistRepository {
 
   @override
   Future<WishlistItem> updateItem(WishlistItem item) async {
-    await _requireOnline();
+    final model = WishlistItemModel.fromEntity(item);
+    if (!await _network.isConnected) {
+      await _cache.put(_scopedKey(item.ownerId, item.id), model.toJson());
+      await _outbox.enqueue('wishlist_update', model.toJson());
+      return item;
+    }
     final uploaded = <String>[];
     try {
       final urls = await _resolveImageUrls(item, uploaded);
@@ -199,7 +217,13 @@ class WishlistRepositoryImpl implements WishlistRepository {
 
   @override
   Future<void> deleteItem(String itemId) async {
-    await _requireOnline();
+    if (!await _network.isConnected) {
+      // Offline: drop from cache now, queue the delete for sync.
+      final found = await _findCached(itemId);
+      if (found != null) await _cache.delete(found.$1);
+      await _outbox.enqueue('wishlist_delete', {'id': itemId});
+      return;
+    }
     // NOTE: this deletes only the Supabase row + local cache. Callers must
     // also delete the item's Firestore chats (wired in WishlistBloc via the
     // injected deleteChatsForItem hook) or chats will leak.
@@ -222,7 +246,7 @@ class WishlistRepositoryImpl implements WishlistRepository {
 
   @override
   Future<void> setHidden(String itemId, bool hidden) async {
-    await _requireOnline();
+    if (!await _network.isConnected) throw const NetworkFailure();
     final found = await _findCached(itemId);
     if (found != null) {
       await updateItem(found.$2.copyWith(isHidden: hidden));
@@ -239,7 +263,13 @@ class WishlistRepositoryImpl implements WishlistRepository {
 
   @override
   Future<void> subscribe(String subscriberId, String targetUserId) async {
-    await _requireOnline();
+    if (!await _network.isConnected) {
+      await _outbox.enqueue('wishlist_subscribe', {
+        'subscriber_id': subscriberId,
+        'target_user_id': targetUserId,
+      });
+      return;
+    }
     try {
       await _remote.subscribe(subscriberId, targetUserId);
     } catch (e) {
@@ -249,7 +279,13 @@ class WishlistRepositoryImpl implements WishlistRepository {
 
   @override
   Future<void> unsubscribe(String subscriberId, String targetUserId) async {
-    await _requireOnline();
+    if (!await _network.isConnected) {
+      await _outbox.enqueue('wishlist_unsubscribe', {
+        'subscriber_id': subscriberId,
+        'target_user_id': targetUserId,
+      });
+      return;
+    }
     try {
       await _remote.unsubscribe(subscriberId, targetUserId);
     } catch (e) {
@@ -259,7 +295,7 @@ class WishlistRepositoryImpl implements WishlistRepository {
 
   @override
   Future<List<Subscription>> mySubscriptions(String subscriberId) async {
-    await _requireOnline();
+    if (!await _network.isConnected) throw const NetworkFailure();
     try {
       return await _remote.fetchSubscriptions(subscriberId);
     } catch (e) {

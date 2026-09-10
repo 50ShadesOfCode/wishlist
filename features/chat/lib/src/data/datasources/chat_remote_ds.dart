@@ -11,9 +11,13 @@ class ChatRemoteDataSource {
   CollectionReference<Map<String, dynamic>> get _threads =>
       _firestore.collection(AppConstants.chatsCollection);
 
-  Stream<List<ChatThreadModel>> watchThreads(String userId) =>
-      _threads.where('participant_ids', arrayContains: userId).snapshots().map(
-        (s) => s.docs.map((d) => ChatThreadModel.fromJson(d.id, d.data())).toList(),
+  Stream<List<ChatThreadModel>> watchThreads(String userId) => _threads
+      .where('participant_ids', arrayContains: userId)
+      .snapshots()
+      .map(
+        (s) => s.docs
+            .map((d) => ChatThreadModel.fromJson(d.id, d.data()))
+            .toList(),
       );
 
   Stream<List<ChatMessageModel>> watchMessages(String chatId) => _threads
@@ -22,19 +26,23 @@ class ChatRemoteDataSource {
       .orderBy('created_at')
       .snapshots()
       .map(
-        (s) => s.docs.map((d) => ChatMessageModel.fromJson(d.id, d.data())).toList(),
+        (s) => s.docs
+            .map((d) => ChatMessageModel.fromJson(d.id, d.data()))
+            .toList(),
       );
 
   Future<ChatThreadModel> createThread({
     required String wishlistItemId,
+    String wishlistItemName = '',
     required String ownerId,
     required List<String> participantIds,
   }) async {
     final now = DateTime.now();
     final doc = await _threads.add({
       'wishlist_item_id': wishlistItemId,
+      'wishlist_item_name': wishlistItemName,
       'owner_id': ownerId,
-      'participant_ids': participantIds,
+      'participant_ids': participantIds.toSet().toList(),
       'created_at': now.toIso8601String(),
     });
     final snap = await doc.get();
@@ -47,7 +55,33 @@ class ChatRemoteDataSource {
         .collection(AppConstants.messagesCollection)
         .add(message.toJson());
     final snap = await doc.get();
+    // Denormalize for thread-list previews and unread badges.
+    try {
+      await _threads.doc(message.chatId).update({
+        'last_message_at': message.createdAt.toIso8601String(),
+        'last_sender_id': message.senderId,
+        'last_message_text': message.text ?? '📷',
+      });
+    } catch (_) {
+      // Preview metadata is best-effort; the message itself is saved.
+    }
     return ChatMessageModel.fromJson(doc.id, snap.data()!);
+  }
+
+  /// Existing thread for [wishlistItemId] visible to [userId], if any.
+  /// Participants are filtered client-side to avoid a composite index.
+  Future<ChatThreadModel?> findThreadForItem({
+    required String wishlistItemId,
+    required String userId,
+  }) async {
+    final query = await _threads
+        .where('wishlist_item_id', isEqualTo: wishlistItemId)
+        .get();
+    for (final doc in query.docs) {
+      final thread = ChatThreadModel.fromJson(doc.id, doc.data());
+      if (thread.participantIds.contains(userId)) return thread;
+    }
+    return null;
   }
 
   Future<void> deleteChatsForItem(String wishlistItemId) async {

@@ -53,5 +53,21 @@
   "secret_chats": "Secret chats",
   "no_chats": "No secret discussions yet.",
   "secret_discussion": "Secret discussion",
-  "message_hint": "Message…"
+  "message_hint": "Message…",
+  "use_location": "Use my location",
+  "location_failed": "Location unavailable",
+  "remove_photo": "Remove photo",
+  "username_taken": "This username is already taken",
+  "dob_future": "Date of birth can't be in the future",
+  "discuss_wish": "Discuss this wish",
+  "chat_open_failed": "Couldn't open the chat",
+  "following": "Following",
+  "following_empty": "You're not following anyone yet",
+  "following_hint": "Enter a user ID to follow their public wishes",
+  "user_id": "User ID",
+  "add": "Add",
+  "unfollow": "Unfollow",
+  "pull_retry": "Pull to retry",
+  "pending_sync": "Offline changes waiting to sync",
+  "sync_now": "Sync now"
 }

@@ -56,4 +56,29 @@ class ProfileRemoteDataSource {
         .delete()
         .eq('user_id', userId);
   }
+
+  /// True when another user already owns [username] (case-sensitive match).
+  Future<bool> isUsernameTaken(String username, String excludeUserId) async {
+    final rows = await _client
+        .from(AppConstants.profilesTable)
+        .select('user_id')
+        .eq('username', username)
+        .neq('user_id', excludeUserId)
+        .limit(1);
+    return (rows as List).isNotEmpty;
+  }
+
+  /// Removes all avatar objects for the user (`$userId/avatar.*`).
+  Future<void> deleteAvatar(String userId) async {
+    final objects = await _client.storage
+        .from(AppConstants.avatarsBucket)
+        .list(path: userId);
+    final paths = [
+      for (final o in objects)
+        if (o.name.isNotEmpty) '$userId/${o.name}',
+    ];
+    if (paths.isNotEmpty) {
+      await _client.storage.from(AppConstants.avatarsBucket).remove(paths);
+    }
+  }
 }

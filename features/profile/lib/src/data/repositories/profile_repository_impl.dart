@@ -7,11 +7,12 @@ import '../datasources/profile_remote_ds.dart';
 import '../models/profile_model.dart';
 
 class ProfileRepositoryImpl implements ProfileRepository {
-  ProfileRepositoryImpl(this._remote, this._cache, this._network);
+  ProfileRepositoryImpl(this._remote, this._cache, this._network, this._outbox);
 
   final ProfileRemoteDataSource _remote;
   final HiveCacheService _cache;
   final NetworkInfo _network;
+  final OutboxService _outbox;
 
   String _key(String userId) => 'profile_$userId';
 
@@ -42,15 +43,18 @@ class ProfileRepositoryImpl implements ProfileRepository {
 
   @override
   Future<Profile> updateProfile(Profile profile) async {
-    if (!await _network.isConnected) throw const NetworkFailure();
     final model = ProfileModel.fromEntity(profile);
+    if (!await _network.isConnected) {
+      // Offline: persist to cache now, queue the upsert for sync.
+      await _cache.put(_key(profile.userId), model.toJson());
+      await _outbox.enqueue('profile_update', model.toJson());
+      return model;
+    }
     try {
       final saved = await _remote.upsertProfile(model);
       await _cache.put(_key(profile.userId), saved.toJson());
       return saved;
     } catch (e) {
-      // No fake-success offline write: the previous silent cache fallback
-      // reported success while the server never received the edit.
       _asFailure(e);
     }
   }
@@ -60,6 +64,30 @@ class ProfileRepositoryImpl implements ProfileRepository {
     if (!await _network.isConnected) throw const NetworkFailure();
     try {
       return await _remote.uploadAvatar(userId, filePath);
+    } catch (e) {
+      _asFailure(e);
+    }
+  }
+
+  @override
+  Future<Profile> removeAvatar(String userId) async {
+    if (!await _network.isConnected) throw const NetworkFailure();
+    try {
+      await _remote.deleteAvatar(userId);
+      final current = await getProfile(userId);
+      final cleared = (current ?? Profile(userId: userId, username: 'user'))
+          .clearAvatar();
+      return await updateProfile(cleared);
+    } catch (e) {
+      _asFailure(e);
+    }
+  }
+
+  @override
+  Future<bool> isUsernameTaken(String username, String excludeUserId) async {
+    if (!await _network.isConnected) return false;
+    try {
+      return await _remote.isUsernameTaken(username, excludeUserId);
     } catch (e) {
       _asFailure(e);
     }
@@ -78,6 +106,5 @@ class ProfileRepositoryImpl implements ProfileRepository {
   }
 
   @override
-  Stream<Profile?> watchProfile(String userId) =>
-      _remote.watchProfile(userId);
+  Stream<Profile?> watchProfile(String userId) => _remote.watchProfile(userId);
 }

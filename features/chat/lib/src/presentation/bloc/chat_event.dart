@@ -1,5 +1,7 @@
 import 'package:equatable/equatable.dart';
 
+import '../../domain/entities/chat_message.dart';
+
 abstract class ChatEvent extends Equatable {
   const ChatEvent();
   @override
@@ -28,4 +30,14 @@ class ChatPhotoSend extends ChatEvent {
   final String chatId;
   final String senderId;
   final String localPath;
+}
+
+/// Internal: recomputes unread badges after the thread list changes.
+class ChatUnreadRefresh extends ChatEvent {
+  const ChatUnreadRefresh(this.threads, this.userId);
+  final List<ChatThread> threads;
+  final String userId;
+
+  @override
+  List<Object?> get props => [threads, userId];
 }

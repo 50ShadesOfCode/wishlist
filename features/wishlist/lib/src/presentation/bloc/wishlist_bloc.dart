@@ -6,10 +6,8 @@ import 'wishlist_event.dart';
 import 'wishlist_state.dart';
 
 class WishlistBloc extends Bloc<WishlistEvent, WishlistState> {
-  WishlistBloc(
-    this._repo, {
-    this._deleteChatsForItem,
-  }) : super(const WishlistState()) {
+  WishlistBloc(this._repo, {this._deleteChatsForItem})
+    : super(const WishlistState()) {
     on<WishlistLoad>(_onLoad);
     on<WishlistAdd>(_onAdd);
     on<WishlistUpdate>(_onUpdate);

@@ -1,4 +1,5 @@
 import 'package:core/core.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../domain/entities/profile.dart';
@@ -11,6 +12,7 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
     on<ProfileLoaded>(_onLoad);
     on<ProfileUpdated>(_onUpdate);
     on<ProfileAvatarPicked>(_onAvatarPicked);
+    on<ProfileAvatarRemoved>(_onAvatarRemoved);
   }
 
   final ProfileRepository _repo;
@@ -30,6 +32,10 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
   Future<void> _onUpdate(ProfileUpdated e, Emitter<ProfileState> emit) async {
     emit(state.copyWith(isLoading: true, error: null));
     try {
+      if (await _repo.isUsernameTaken(e.profile.username, e.profile.userId)) {
+        emit(state.copyWith(isLoading: false, error: 'username_taken'.tr()));
+        return;
+      }
       final p = await _repo.updateProfile(e.profile);
       emit(state.copyWith(profile: p, isLoading: false));
     } on Failure catch (f) {
@@ -48,12 +54,25 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
       final url = await _repo.uploadAvatar(e.userId, e.filePath);
       final current =
           state.profile ?? Profile(userId: e.userId, username: 'user');
-      final p = await _repo.updateProfile(
-        current.copyWith(avatarUrl: url),
-      );
+      final p = await _repo.updateProfile(current.copyWith(avatarUrl: url));
       emit(state.copyWith(profile: p, isLoading: false));
     } catch (err) {
       // Upload failure keeps the previous avatar; only the error surfaces.
+      emit(state.copyWith(isLoading: false, error: err.toString()));
+    }
+  }
+
+  Future<void> _onAvatarRemoved(
+    ProfileAvatarRemoved e,
+    Emitter<ProfileState> emit,
+  ) async {
+    emit(state.copyWith(isLoading: true, error: null));
+    try {
+      final p = await _repo.removeAvatar(e.userId);
+      emit(state.copyWith(profile: p, isLoading: false));
+    } on Failure catch (f) {
+      emit(state.copyWith(isLoading: false, error: f.message));
+    } catch (err) {
       emit(state.copyWith(isLoading: false, error: err.toString()));
     }
   }

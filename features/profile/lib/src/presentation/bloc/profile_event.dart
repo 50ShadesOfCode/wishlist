@@ -28,3 +28,12 @@ class ProfileAvatarPicked extends ProfileEvent {
   @override
   List<Object?> get props => [userId, filePath];
 }
+
+/// Removes the stored avatar object and clears `avatar_url`.
+class ProfileAvatarRemoved extends ProfileEvent {
+  const ProfileAvatarRemoved(this.userId);
+  final String userId;
+
+  @override
+  List<Object?> get props => [userId];
+}

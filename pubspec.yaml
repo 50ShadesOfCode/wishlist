@@ -13,9 +13,9 @@ dependencies:
   cupertino_ui: ^1.0.2
   cupertino_icons: ^1.0.9
   core:
-    path: features/core
+    path: core
   core_ui:
-    path: features/core_ui
+    path: core_ui
   auth:
     path: features/auth
   profile:

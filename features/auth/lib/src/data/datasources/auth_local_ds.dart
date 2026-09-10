@@ -15,8 +15,7 @@ class AuthLocalDataSource {
 
   HiveCacheService get cacheBox => _cache;
 
-  Future<void> cacheUser(UserModel user) =>
-      _cache.put(_key, user.toJson());
+  Future<void> cacheUser(UserModel user) => _cache.put(_key, user.toJson());
 
   Future<UserModel?> cachedUser() async {
     final json = await _cache.get(_key);
@@ -32,6 +31,7 @@ class AuthLocalDataSource {
     for (final box in const [
       AppConstants.wishlistCacheBox,
       AppConstants.profileCacheBox,
+      AppConstants.chatSeenBox,
     ]) {
       try {
         await HiveCacheService.clearBox(box);

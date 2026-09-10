@@ -45,9 +45,7 @@ class WishlistRemoteDataSource {
       .stream(primaryKey: ['id'])
       .eq('owner_id', ownerId)
       .order('created_at')
-      .map(
-        (rows) => rows.map(WishlistItemModel.fromJson).toList(),
-      );
+      .map((rows) => rows.map(WishlistItemModel.fromJson).toList());
 
   Future<WishlistItemModel> insert(WishlistItemModel item) async {
     final row = await _client
@@ -69,7 +67,10 @@ class WishlistRemoteDataSource {
   }
 
   Future<void> delete(String itemId) async {
-    await _client.from(AppConstants.wishlistItemsTable).delete().eq('id', itemId);
+    await _client
+        .from(AppConstants.wishlistItemsTable)
+        .delete()
+        .eq('id', itemId);
   }
 
   /// Uploads a device-local image for an item and returns its public URL.
@@ -106,18 +107,15 @@ class WishlistRemoteDataSource {
     await _client.storage.from(AppConstants.avatarsBucket).remove([path]);
   }
 
-  Future<void> subscribe(String subscriberId, String targetUserId) =>
-      _client.from(AppConstants.subscriptionsTable).upsert({
-        'subscriber_id': subscriberId,
-        'target_user_id': targetUserId,
-      });
+  Future<void> subscribe(String subscriberId, String targetUserId) => _client
+      .from(AppConstants.subscriptionsTable)
+      .upsert({'subscriber_id': subscriberId, 'target_user_id': targetUserId});
 
-  Future<void> unsubscribe(String subscriberId, String targetUserId) =>
-      _client
-          .from(AppConstants.subscriptionsTable)
-          .delete()
-          .eq('subscriber_id', subscriberId)
-          .eq('target_user_id', targetUserId);
+  Future<void> unsubscribe(String subscriberId, String targetUserId) => _client
+      .from(AppConstants.subscriptionsTable)
+      .delete()
+      .eq('subscriber_id', subscriberId)
+      .eq('target_user_id', targetUserId);
 
   Future<List<Subscription>> fetchSubscriptions(String subscriberId) async {
     final rows = await _client

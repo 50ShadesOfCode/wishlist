@@ -1,17 +1,19 @@
 import 'dart:async';
 
 import 'package:auth/auth.dart';
+import 'package:core/core.dart';
 import 'package:core_ui/core_ui.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:profile/profile.dart';
+import 'package:wishlist/wishlist.dart';
 
 import 'di/injection.dart';
 import 'router/app_router.dart';
 import 'services/supabase_session_bridge.dart';
-import 'services/theme_controller.dart';
+import 'services/sync_service.dart';
 
 class WishlistApp extends StatefulWidget {
   const WishlistApp({super.key});
@@ -25,6 +27,7 @@ class _WishlistAppState extends State<WishlistApp> {
   late final GoRouter _router;
   late final ThemeController _theme;
   StreamSubscription<AuthState>? _authSub;
+  StreamSubscription<bool>? _connectivitySub;
   String? _profileEnsuredFor;
 
   @override
@@ -36,6 +39,29 @@ class _WishlistAppState extends State<WishlistApp> {
     // Auth-driven redirects are handled by refreshListenable inside.
     _router = createRouter(_authBloc);
     _authSub = _authBloc.stream.listen(_ensureSupabaseProfile);
+    sl<NotificationService>().onTap = _onNotificationTap;
+    // Drain the offline outbox whenever connectivity returns while signed
+    // in (SyncService itself no-ops when offline or already syncing).
+    _connectivitySub = sl<NetworkInfo>().onConnectivityChanged.listen((online) {
+      if (online && _authBloc.state.status == AuthStatus.authenticated) {
+        sl<SyncService>().syncNow();
+      }
+    });
+  }
+
+  /// Deep-links notification taps: `item:<id>` opens the wish for editing
+  /// (when still present), `chat:<id>` opens the thread.
+  void _onNotificationTap(NotificationTap tap) {
+    switch (tap.type) {
+      case 'item':
+        WishlistItem? item;
+        for (final e in sl<WishlistBloc>().state.items) {
+          if (e.id == tap.id) item = e;
+        }
+        if (item != null) _router.push('/wishlist/edit', extra: item);
+      case 'chat':
+        _router.push('/chats/${tap.id}');
+    }
   }
 
   /// Bridges Firebase Auth into a Supabase session (RLS identity) and
@@ -59,8 +85,7 @@ class _WishlistAppState extends State<WishlistApp> {
         await repo.updateProfile(
           Profile(
             userId: user.id,
-            username:
-                user.displayName ?? user.email.split('@').first,
+            username: user.displayName ?? user.email.split('@').first,
             avatarUrl: user.photoUrl,
           ),
         );
@@ -74,6 +99,7 @@ class _WishlistAppState extends State<WishlistApp> {
   @override
   void dispose() {
     _authSub?.cancel();
+    _connectivitySub?.cancel();
     super.dispose();
   }
 
