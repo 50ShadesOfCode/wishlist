@@ -1,0 +1,35 @@
+name: profile
+description: Profile + Settings feature - picture, username, dob, city, theme, logout, delete.
+version: 0.1.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.13.3
+  flutter: ">=3.35.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  core:
+    path: ../core
+  core_ui:
+    path: ../core_ui
+  material_ui: ^1.2.0
+  cupertino_ui: ^1.0.2
+  flutter_bloc: ^9.1.1
+  equatable: ^2.1.0
+  json_annotation: ^4.12.0
+  get_it: ^9.2.1
+  injectable: ^3.0.0
+  supabase_flutter: ^2.8.0
+  image_picker: ^1.2.3
+  flutter_form_builder: ^11.0.0
+  form_builder_validators: ^11.0.0
+  dropdown_button2: ^3.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.16.1
+  json_serializable: ^6.14.1
