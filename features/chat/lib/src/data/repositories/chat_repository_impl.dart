@@ -28,7 +28,11 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   /// Local last-opened timestamps per thread (unread badges are derived).
+  /// Keys are per-user (`$userId::$threadId`) so a device shared between
+  /// accounts never leaks read state across users.
   final HiveCacheService _seenCache;
+
+  String _seenKey(String userId, String threadId) => '$userId::$threadId';
 
   @override
   Stream<List<ChatThread>> watchThreadsForUser(String userId) =>
@@ -94,8 +98,9 @@ class ChatRepositoryImpl implements ChatRepository {
     await _requireOnline();
     // Upload first so the persisted message carries a public URL readable
     // by all participants — never a sender-local device path.
+    String? imageUrl;
     try {
-      final imageUrl = await _photoStorage.upload(
+      imageUrl = await _photoStorage.upload(
         senderId: senderId,
         chatId: chatId,
         filePath: localImagePath,
@@ -110,6 +115,11 @@ class ChatRepositoryImpl implements ChatRepository {
         ),
       );
     } catch (e) {
+      // Roll back the orphaned upload (wishlist-style compensation) so a
+      // failed send doesn't leak storage objects.
+      if (imageUrl != null) {
+        await _photoStorage.deleteByUrl(imageUrl);
+      }
       mapDataError(e);
     }
   }
@@ -125,7 +135,10 @@ class ChatRepositoryImpl implements ChatRepository {
       if (last == null || t.lastSenderId == currentUserId) continue;
       DateTime? seen;
       try {
-        final raw = await _seenCache.get(t.id);
+        final raw =
+            await _seenCache.get(_seenKey(currentUserId, t.id)) ??
+            // Legacy bare-thread-id entries (pre per-user scoping).
+            await _seenCache.get(t.id);
         final iso = raw?['seen_at'] as String?;
         seen = iso == null ? null : DateTime.tryParse(iso);
       } catch (_) {
@@ -137,11 +150,19 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<void> markThreadSeen(String chatId) async {
+  Future<void> markThreadSeen(String chatId, {String? userId}) async {
     try {
-      await _seenCache.put(chatId, {
-        'seen_at': DateTime.now().toIso8601String(),
-      });
+      if (userId != null) {
+        await _seenCache.put(_seenKey(userId, chatId), {
+          'seen_at': DateTime.now().toIso8601String(),
+        });
+        // Drop the legacy bare-key entry so it can't leak across users.
+        await _seenCache.delete(chatId);
+      } else {
+        await _seenCache.put(chatId, {
+          'seen_at': DateTime.now().toIso8601String(),
+        });
+      }
     } catch (_) {
       // Badge state is best-effort.
     }
@@ -152,6 +173,16 @@ class ChatRepositoryImpl implements ChatRepository {
     await _requireOnline();
     try {
       await _remote.deleteChatsForItem(wishlistItemId);
+    } catch (e) {
+      mapDataError(e);
+    }
+  }
+
+  @override
+  Future<void> deleteThreadsForUser(String userId) async {
+    await _requireOnline();
+    try {
+      await _remote.deleteThreadsForUser(userId);
     } catch (e) {
       mapDataError(e);
     }

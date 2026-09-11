@@ -22,15 +22,22 @@ Future<T> cachedRead<T>({
 /// Queues an offline write. Returns true when the caller should return its
 /// cached value instead of hitting the network; false when online (caller
 /// proceeds with the remote call).
+///
+/// During replay ([OutboxService.replayMode]) this never re-enqueues: it
+/// returns false so the caller hits the network and a mid-drain flap
+/// surfaces as a failure (counted toward dead-lettering) instead of
+/// looping the op back into the queue.
 Future<bool> enqueueOfflineWrite({
   required NetworkInfo network,
   required OutboxService outbox,
   required OutboxKind kind,
   required Map<String, dynamic> payload,
   required Future<void> Function() writeCache,
+  String? userId,
 }) async {
+  if (OutboxService.replayMode) return false;
   if (await network.isConnected) return false;
   await writeCache();
-  await outbox.enqueue(kind, payload);
+  await outbox.enqueue(kind, payload, userId: userId);
   return true;
 }

@@ -41,6 +41,16 @@ class _WishlistAppState extends State<WishlistApp> {
     _router = createRouter(_authBloc);
     _authSub = _authBloc.stream.listen(_ensureSupabaseProfile);
     sl<NotificationService>().onTap = _onNotificationTap;
+    // Killed-app launch via a notification tap: queue until authenticated
+    // (routed at the end of _ensureSupabaseProfile).
+    sl<NotificationService>().getInitialTap().then((tap) {
+      if (tap == null) return;
+      if (_authBloc.state.status == AuthStatus.authenticated) {
+        _onNotificationTap(tap);
+      } else {
+        _pendingLaunchTap = tap;
+      }
+    });
     // Drain the offline outbox whenever connectivity returns while signed
     // in (SyncService itself no-ops when offline or already syncing).
     _connectivitySub = sl<NetworkInfo>().onConnectivityChanged.listen((online) {
@@ -50,14 +60,34 @@ class _WishlistAppState extends State<WishlistApp> {
     });
   }
 
+  /// Notification tap that arrived before auth resolved (e.g. killed-app
+  /// launch): held until the first authenticated emission, then routed.
+  NotificationTap? _pendingLaunchTap;
+
   /// Deep-links notification taps: `item:<id>` opens the wish for editing
-  /// (when still present), `chat:<id>` opens the thread.
-  void _onNotificationTap(NotificationTap tap) {
+  /// (falling back to a server fetch when the item isn't in memory),
+  /// `chat:<id>` opens the thread.
+  Future<void> _onNotificationTap(NotificationTap tap) async {
     switch (tap.type) {
       case 'item':
         WishlistItem? item;
-        for (final e in sl<WishlistBloc>().state.items) {
-          if (e.id == tap.id) item = e;
+        try {
+          for (final e in sl<WishlistBloc>().state.items) {
+            if (e.id == tap.id) item = e;
+          }
+        } catch (_) {
+          item = null;
+        }
+        // In-memory miss (restarted app, unfetched list): fall back to the
+        // online-only fetch instead of dropping the deep link.
+        if (item == null) {
+          try {
+            if (sl.isRegistered<GetItemByIdUseCase>()) {
+              item = await sl<GetItemByIdUseCase>().call(tap.id);
+            }
+          } catch (_) {
+            item = null;
+          }
         }
         if (item != null) _router.push('/wishlist/edit', extra: item);
       case 'chat':
@@ -69,10 +99,17 @@ class _WishlistAppState extends State<WishlistApp> {
   /// creates the matching Supabase `profiles` row on first registration
   /// (email sign-up or first Google/Apple sign-in). Idempotent: only runs
   /// once per user and skips when the session/row already exists.
+  ///
+  /// Profile auto-create runs only on confirmed-online absence: an offline
+  /// `getProfile` returning null (no cache) must never trigger an upsert —
+  /// that would queue a clobbering offline op over the real row.
   Future<void> _ensureSupabaseProfile(AuthState state) async {
     final user = state.user;
     if (state.status != AuthStatus.authenticated || user == null) {
       _profileEnsuredFor = null;
+      if (sl.isRegistered<SyncService>()) {
+        sl<SyncService>().currentUserId = null;
+      }
       // Privacy: singleton blocs keep the previous user's state; reset them
       // to initial on every sign-out so the next user starts clean.
       // Dispatched as events (not direct emits) so subscriptions cancel
@@ -91,10 +128,46 @@ class _WishlistAppState extends State<WishlistApp> {
     }
     if (_profileEnsuredFor == user.id) return;
     _profileEnsuredFor = user.id;
+    // Scope sync + purge another user's queued ops before any replay.
+    if (sl.isRegistered<SyncService>()) {
+      sl<SyncService>().currentUserId = user.id;
+    }
+    try {
+      if (sl.isRegistered<OutboxService>()) {
+        final dropped = await sl<OutboxService>().purgeForeignOps(user.id);
+        if (dropped > 0) {
+          appLogger.info('Purged $dropped foreign outbox ops on sign-in');
+        }
+      }
+    } catch (_) {
+      // Purge is best-effort; SyncService skips foreign ops anyway.
+    }
     try {
       await sl<SupabaseSessionBridge>().ensureSession();
-      final existing = await sl<GetProfileUseCase>().call(user.id);
+      final online = await sl<NetworkInfo>().isConnected;
+      if (!online) {
+        // Offline: session/profile work waits for reconnect (the
+        // connectivity listener triggers SyncService then).
+        _profileEnsuredFor = null;
+        return;
+      }
+      Profile? existing;
+      try {
+        existing = await sl<GetProfileUseCase>().call(user.id);
+      } catch (e) {
+        // 401/expiry: force a fresh Firebase token + re-bridge once, then
+        // retry the fetch before giving up for this emission.
+        if (_looksUnauthorized(e)) {
+          await sl<SupabaseSessionBridge>().ensureSession(forceRefresh: true);
+          existing = await sl<GetProfileUseCase>().call(user.id);
+        } else {
+          rethrow;
+        }
+      }
       if (existing == null) {
+        // Column-preserving: only the identity columns are set for a new
+        // row; an existing row is never overwritten here (the upsert would
+        // clobber columns edited on another device).
         await sl<UpdateProfileUseCase>().call(
           Profile(
             userId: user.id,
@@ -103,10 +176,26 @@ class _WishlistAppState extends State<WishlistApp> {
           ),
         );
       }
+      // Route a killed-app launch tap now that auth + profile resolved.
+      final launchTap = _pendingLaunchTap;
+      _pendingLaunchTap = null;
+      if (launchTap != null) await _onNotificationTap(launchTap);
+      // Drain any queued offline ops for this user.
+      if (await sl<NetworkInfo>().isConnected) {
+        await sl<SyncService>().syncNow();
+      }
     } catch (_) {
       // Offline or backend error: retry on next authenticated emission.
       _profileEnsuredFor = null;
     }
+  }
+
+  bool _looksUnauthorized(Object e) {
+    final text = e.toString().toLowerCase();
+    return text.contains('401') ||
+        text.contains('unauthorized') ||
+        text.contains('jwt') ||
+        text.contains('expired');
   }
 
   @override

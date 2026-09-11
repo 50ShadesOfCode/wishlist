@@ -93,7 +93,28 @@ class NotificationService {
     }
   }
 
-  static int _stableId(String key) => key.hashCode & 0x7fffffff;
+  /// Deterministic id via FNV-1a (stable across restarts, unlike hashCode
+  /// which is salted per process and would re-notify / collide randomly).
+  static int _stableId(String key) {
+    var hash = 0x811c9dc5;
+    for (final unit in key.codeUnits) {
+      hash ^= unit;
+      hash = (hash * 0x01000193) & 0xffffffff;
+    }
+    return hash & 0x7fffffff;
+  }
+
+  /// Tap that launched the app from a killed state, if any. Wired by
+  /// [WishlistApp] after auth resolves so the deep link isn't lost.
+  Future<NotificationTap?> getInitialTap() async {
+    try {
+      final details = await _plugin.getNotificationAppLaunchDetails();
+      if (details == null || !details.didNotificationLaunchApp) return null;
+      return NotificationTap.parse(details.notificationResponse?.payload);
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<void> showNewItem({
     required String itemId,

@@ -36,7 +36,9 @@ class _ChatThreadViewState extends State<ChatThreadView> {
   @override
   void initState() {
     super.initState();
-    BlocProvider.of<ChatBloc>(context).add(ChatMessagesWatch(widget.chatId));
+    BlocProvider.of<ChatBloc>(context).add(
+      ChatMessagesWatch(widget.chatId, userId: widget.currentUserId),
+    );
   }
 
   @override

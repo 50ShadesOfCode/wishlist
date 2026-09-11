@@ -30,10 +30,14 @@ abstract class ChatRepository {
     String currentUserId,
   );
 
-  /// Records opening a thread (clears its unread badge).
-  Future<void> markThreadSeen(String chatId);
+  /// Records opening a thread (clears its unread badge). When [userId] is
+  /// given the mark is scoped per user (`$userId::$chatId`).
+  Future<void> markThreadSeen(String chatId, {String? userId});
 
   /// Destroys all chats (and messages) bound to a wishlist item.
   /// Must be called when the owner deletes the item.
   Future<void> deleteChatsForItem(String wishlistItemId);
+
+  /// Destroys every thread the user participates in (account deletion).
+  Future<void> deleteThreadsForUser(String userId);
 }

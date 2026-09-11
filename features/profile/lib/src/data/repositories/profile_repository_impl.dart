@@ -30,7 +30,10 @@ class ProfileRepositoryImpl implements ProfileRepository {
         await _cache.put(_key(userId), remote.toJson());
         return remote;
       }
-      return _getCached(userId);
+      // Online-confirmed absence (deleted elsewhere): evict the stale cache
+      // entry instead of resurrecting a deleted profile.
+      await _cache.delete(_key(userId));
+      return null;
     },
     fallback: () => _getCached(userId),
   );
@@ -44,6 +47,7 @@ class ProfileRepositoryImpl implements ProfileRepository {
       outbox: _outbox,
       kind: OutboxKind.profileUpdate,
       payload: model.toJson(),
+      userId: profile.userId,
       writeCache: () => _cache.put(_key(profile.userId), model.toJson()),
     )) {
       return model;
@@ -99,11 +103,29 @@ class ProfileRepositoryImpl implements ProfileRepository {
   Future<void> deleteAccount(String userId) async {
     if (!await _network.isConnected) throw const NetworkFailure();
     try {
-      await _remote.deleteProfile(userId);
+      final deleted = await _remote.deleteProfile(userId);
+      if (!deleted) {
+        // RLS-denied no-op: don't wipe the cache while the row survives.
+        throw const ServerFailure('Profile could not be deleted');
+      }
     } catch (e) {
       mapDataError(e);
-    } finally {
-      await _cache.delete(_key(userId));
+    }
+    await _cache.delete(_key(userId));
+    // Remove all three avatar path patterns (avatar.*, legacy names).
+    try {
+      await _remote.deleteAvatar(userId);
+    } catch (_) {
+      // Storage cleanup is best-effort.
+    }
+  }
+
+  @override
+  Future<void> deleteUploadedAvatar(String avatarUrl) async {
+    try {
+      await _remote.deleteAvatarByUrl(avatarUrl);
+    } catch (_) {
+      // Rollback cleanup is best-effort.
     }
   }
 }

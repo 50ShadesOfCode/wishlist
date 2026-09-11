@@ -22,4 +22,8 @@ abstract class WishlistRepository {
   Future<void> subscribe(String subscriberId, String targetUserId);
   Future<void> unsubscribe(String subscriberId, String targetUserId);
   Future<List<Subscription>> mySubscriptions(String subscriberId);
+
+  /// Deletes every subscription row on both sides for [userId]
+  /// (as subscriber and as target). Account deletion.
+  Future<void> deleteAllSubscriptionsForUser(String userId);
 }

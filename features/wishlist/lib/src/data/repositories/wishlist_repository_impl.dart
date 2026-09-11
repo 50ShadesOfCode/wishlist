@@ -46,10 +46,18 @@ class WishlistRepositoryImpl implements WishlistRepository {
   Future<List<WishlistItem>> getMyItems(String ownerId) => cachedRead(
     network: _network,
     remote: () async {
-      final items = await _remote.fetchMine(ownerId);
+      final items = await _remote.fetchAllMine(ownerId);
       await _cache.putAll({
         for (final i in items) _scopedKey(ownerId, i.id): i.toJson(),
       });
+      // Evict server-deleted rows: any cached item for this owner whose id
+      // is absent from the server list is stale (deleted elsewhere).
+      final liveIds = {for (final i in items) i.id};
+      for (final key in await _cache.keys()) {
+        if (key is! String || !key.startsWith('$ownerId::')) continue;
+        final id = key.substring(ownerId.length + 2);
+        if (!liveIds.contains(id)) await _cache.delete(key);
+      }
       return items;
     },
     // Filter by the row's owner_id (not just the key) so a signed-in user
@@ -103,6 +111,7 @@ class WishlistRepositoryImpl implements WishlistRepository {
       outbox: _outbox,
       kind: OutboxKind.wishlistAdd,
       payload: model.toJson(),
+      userId: item.ownerId,
       writeCache: () =>
           _cache.put(_scopedKey(item.ownerId, item.id), model.toJson()),
     )) {
@@ -136,6 +145,7 @@ class WishlistRepositoryImpl implements WishlistRepository {
       outbox: _outbox,
       kind: OutboxKind.wishlistUpdate,
       payload: model.toJson(),
+      userId: item.ownerId,
       writeCache: () =>
           _cache.put(_scopedKey(item.ownerId, item.id), model.toJson()),
     )) {
@@ -143,6 +153,15 @@ class WishlistRepositoryImpl implements WishlistRepository {
     }
     final uploaded = <String>[];
     try {
+      // Fetch BEFORE updating: the diff below must compare the pre-edit
+      // remote state against the new urls (fetching after always yields an
+      // empty diff — a previous no-op bug).
+      WishlistItemModel? previous;
+      try {
+        previous = await _remote.fetchById(item.id);
+      } catch (_) {
+        // proceed; diff cleanup is best-effort
+      }
       final urls = await _media.resolveImageUrls(item, uploaded);
       final saved = await _remote.update(
         WishlistItemModel.fromEntity(item.copyWith(imageUrls: urls)),
@@ -150,7 +169,6 @@ class WishlistRepositoryImpl implements WishlistRepository {
       await _cache.put(_scopedKey(saved.ownerId, saved.id), saved.toJson());
       // Remove images the user dropped in this edit (best-effort).
       try {
-        final previous = await _remote.fetchById(item.id);
         if (previous != null) {
           final removed = previous.imageUrls
               .where(isRemoteUrl)
@@ -175,11 +193,23 @@ class WishlistRepositoryImpl implements WishlistRepository {
       if (found != null) await _cache.delete(found.$1);
     }
 
+    String? ownerId;
+    final preCached = await _findCached(itemId);
+    if (preCached != null) {
+      try {
+        ownerId = WishlistItemModel.fromJson(
+          await _cache.get(preCached.$1) ?? const {},
+        ).ownerId;
+      } catch (_) {
+        ownerId = null;
+      }
+    }
     if (await enqueueOfflineWrite(
       network: _network,
       outbox: _outbox,
       kind: OutboxKind.wishlistDelete,
       payload: {'id': itemId},
+      userId: ownerId,
       writeCache: dropFromCache,
     )) {
       return;
@@ -191,13 +221,21 @@ class WishlistRepositoryImpl implements WishlistRepository {
     try {
       final previous = await _remote.fetchById(itemId);
       imageUrls = previous?.imageUrls.where(isRemoteUrl).toList() ?? const [];
+      ownerId ??= previous?.ownerId;
     } catch (_) {
       // proceed with row delete even if the pre-fetch fails
     }
-    try {
-      await _remote.delete(itemId);
-    } catch (e) {
-      mapDataError(e);
+    final deleted = await (() async {
+      try {
+        return await _remote.delete(itemId);
+      } catch (e) {
+        mapDataError(e);
+      }
+    })();
+    if (!deleted) {
+      // RLS-denied or already-gone: report the failure instead of wiping
+      // cache + storage and claiming success.
+      throw const ServerFailure('Wishlist item could not be deleted');
     }
     final found = await _findCached(itemId);
     if (found != null) await _cache.delete(found.$1);
@@ -232,6 +270,7 @@ class WishlistRepositoryImpl implements WishlistRepository {
         'subscriber_id': subscriberId,
         'target_user_id': targetUserId,
       },
+      userId: subscriberId,
       writeCache: () async {},
     )) {
       return;
@@ -253,6 +292,7 @@ class WishlistRepositoryImpl implements WishlistRepository {
         'subscriber_id': subscriberId,
         'target_user_id': targetUserId,
       },
+      userId: subscriberId,
       writeCache: () async {},
     )) {
       return;
@@ -269,6 +309,16 @@ class WishlistRepositoryImpl implements WishlistRepository {
     if (!await _network.isConnected) throw const NetworkFailure();
     try {
       return await _remote.fetchSubscriptions(subscriberId);
+    } catch (e) {
+      mapDataError(e);
+    }
+  }
+
+  @override
+  Future<void> deleteAllSubscriptionsForUser(String userId) async {
+    if (!await _network.isConnected) throw const NetworkFailure();
+    try {
+      await _remote.deleteAllSubscriptionsForUser(userId);
     } catch (e) {
       mapDataError(e);
     }

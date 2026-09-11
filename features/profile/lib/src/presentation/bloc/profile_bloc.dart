@@ -13,6 +13,7 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
     required this._uploadAvatar,
     required this._removeAvatar,
     required this._isUsernameTaken,
+    required this._deleteUploadedAvatar,
   }) : super(const ProfileState()) {
     on<ProfileLoaded>(_onLoad);
     on<ProfileUpdated>(_onUpdate);
@@ -26,6 +27,7 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
   final UploadAvatarUseCase _uploadAvatar;
   final RemoveAvatarUseCase _removeAvatar;
   final IsUsernameTakenUseCase _isUsernameTaken;
+  final DeleteUploadedAvatarUseCase _deleteUploadedAvatar;
 
   Future<void> _onLoad(ProfileLoaded e, Emitter<ProfileState> emit) async {
     emit(state.copyWith(isLoading: true, error: null));
@@ -73,14 +75,24 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
       return;
     }
     emit(state.copyWith(isLoading: true, error: null));
+    String? url;
     try {
-      final url = await _uploadAvatar(
+      url = await _uploadAvatar(
         UploadAvatarParams(userId: e.userId, filePath: e.filePath),
       );
       final p = await _updateProfile(current.copyWith(avatarUrl: url));
       emit(state.copyWith(profile: p, isLoading: false));
     } catch (err) {
-      // Upload failure keeps the previous avatar; only the error surfaces.
+      // Roll back the orphaned upload (wishlist-style compensation) so a
+      // failed profile save doesn't leak storage objects. Either way the
+      // previous avatar is kept; only the error surfaces.
+      if (url != null) {
+        try {
+          await _deleteUploadedAvatar(url);
+        } catch (_) {
+          // Rollback is best-effort.
+        }
+      }
       emit(state.copyWith(isLoading: false, error: err.toString()));
     }
   }

@@ -90,7 +90,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       state.copyWith(activeChatId: e.chatId, messages: const [], isLoading: true),
     );
     // Opening a thread marks it seen (clears its unread badge).
-    await _markThreadSeen(e.chatId);
+    await _markThreadSeen(
+      MarkThreadSeenParams(chatId: e.chatId, userId: e.userId),
+    );
     emit(
       state.copyWith(unreadChatIds: state.unreadChatIds.difference({e.chatId})),
     );

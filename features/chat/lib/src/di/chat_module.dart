@@ -49,6 +49,8 @@ void registerChatModule(
   _reg(sl, GetUnreadThreadsUseCase.new);
   _reg(sl, MarkThreadSeenUseCase.new);
   _reg(sl, GetOrCreateThreadUseCase.new);
+  _reg(sl, DeleteChatsForItemUseCase.new);
+  _reg(sl, DeleteThreadsForUserUseCase.new);
   // Singleton: nested go_router pages (list + thread sub-route) share it
   // via sl().
   sl.registerLazySingleton<ChatBloc>(

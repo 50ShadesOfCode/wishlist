@@ -86,12 +86,38 @@ class GetUnreadThreadsUseCase
       _repo.unreadThreadIds(params.threads, params.currentUserId);
 }
 
-class MarkThreadSeenUseCase implements UseCase<void, String> {
+class MarkThreadSeenParams {
+  const MarkThreadSeenParams({required this.chatId, this.userId});
+  final String chatId;
+  final String? userId;
+}
+
+class MarkThreadSeenUseCase implements UseCase<void, MarkThreadSeenParams> {
   MarkThreadSeenUseCase(this._repo);
   final ChatRepository _repo;
 
   @override
-  Future<void> call(String chatId) => _repo.markThreadSeen(chatId);
+  Future<void> call(MarkThreadSeenParams params) =>
+      _repo.markThreadSeen(params.chatId, userId: params.userId);
+}
+
+/// Deletes every thread (and its messages) attached to a wishlist item.
+/// Used as the cross-feature hook for item deletes (online and replayed).
+class DeleteChatsForItemUseCase implements UseCase<void, String> {
+  DeleteChatsForItemUseCase(this._repo);
+  final ChatRepository _repo;
+
+  @override
+  Future<void> call(String itemId) => _repo.deleteChatsForItem(itemId);
+}
+
+/// Deletes every thread the user participates in (account deletion).
+class DeleteThreadsForUserUseCase implements UseCase<void, String> {
+  DeleteThreadsForUserUseCase(this._repo);
+  final ChatRepository _repo;
+
+  @override
+  Future<void> call(String userId) => _repo.deleteThreadsForUser(userId);
 }
 
 class GetOrCreateThreadParams {

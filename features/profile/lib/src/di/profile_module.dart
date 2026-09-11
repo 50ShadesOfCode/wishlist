@@ -36,6 +36,7 @@ void registerProfileModule(GetIt sl) {
   _reg(sl, RemoveAvatarUseCase.new);
   _reg(sl, IsUsernameTakenUseCase.new);
   _reg(sl, DeleteProfileUseCase.new);
+  _reg(sl, DeleteUploadedAvatarUseCase.new);
   _reg(sl, ReplayProfileOpUseCase.new);
   // Singleton: nested go_router pages share it via sl().
   sl.registerLazySingleton<ProfileBloc>(
@@ -45,6 +46,7 @@ void registerProfileModule(GetIt sl) {
       uploadAvatar: sl(),
       removeAvatar: sl(),
       isUsernameTaken: sl(),
+      deleteUploadedAvatar: sl(),
     ),
   );
 }

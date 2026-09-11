@@ -34,23 +34,37 @@ class ProfileRemoteDataSource {
         filePath: filePath,
       );
 
-  Future<void> deleteProfile(String userId) async {
-    await _client
+  /// Deletes the profile row, returning true when a row was actually
+  /// removed (false = already gone or RLS-denied no-op).
+  Future<bool> deleteProfile(String userId) async {
+    final rows = await _client
         .from(AppConstants.profilesTable)
         .delete()
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .select('user_id');
+    return (rows as List).isNotEmpty;
   }
 
-  /// True when another user already owns [username] (case-sensitive match).
+  /// True when another user already owns [username] (case-insensitive).
+  /// A DB unique index on `lower(username)` (see migration
+  /// `20260911000000_username_unique.sql`) is the final arbiter; this check
+  /// is a fast-path for friendly form errors.
   Future<bool> isUsernameTaken(String username, String excludeUserId) async {
     final rows = await _client
         .from(AppConstants.profilesTable)
         .select('user_id')
-        .eq('username', username)
+        .ilike('username', username)
         .neq('user_id', excludeUserId)
         .limit(1);
     return (rows as List).isNotEmpty;
   }
+
+  /// Best-effort removal of a single uploaded avatar by public URL.
+  Future<void> deleteAvatarByUrl(String avatarUrl) => removeByUrls(
+    _client,
+    bucket: AppConstants.avatarsBucket,
+    imageUrls: [avatarUrl],
+  );
 
   /// Removes all avatar objects for the user (`$userId/avatar.*`).
   Future<void> deleteAvatar(String userId) async {

@@ -21,6 +21,15 @@ class GetVisibleItemsUseCase implements UseCase<List<WishlistItem>, String> {
       _repo.getVisibleItems(ownerId);
 }
 
+/// Online-only fetch of a single item (deep-link fallback for notification
+/// taps when the item isn't in the in-memory list).
+class GetItemByIdUseCase implements UseCase<WishlistItem?, String> {
+  GetItemByIdUseCase(this._repo);
+  final WishlistRepository _repo;
+  @override
+  Future<WishlistItem?> call(String itemId) => _repo.getItemById(itemId);
+}
+
 class AddItemUseCase implements UseCase<WishlistItem, WishlistItem> {
   AddItemUseCase(this._repo);
   final WishlistRepository _repo;
@@ -109,13 +118,26 @@ class GetSubscriptionsUseCase
       _repo.mySubscriptions(subscriberId);
 }
 
+class DeleteAllSubscriptionsForUserUseCase implements UseCase<void, String> {
+  DeleteAllSubscriptionsForUserUseCase(this._repo);
+  final WishlistRepository _repo;
+
+  @override
+  Future<void> call(String userId) =>
+      _repo.deleteAllSubscriptionsForUser(userId);
+}
+
 /// Replays one queued offline op (see [OutboxService]). Keeps the app layer
 /// free of data models: payload parsing lives in the owning feature.
 /// Malformed payloads throw [ServerFailure] with the op key so [SyncService]
 /// logs and skips them (failed ops stay queued but never starve the rest).
 class ReplayWishlistOpUseCase implements UseCase<void, OutboxOperation> {
-  ReplayWishlistOpUseCase(this._repo);
+  /// [deleteChatsForItem] routes replayed deletes through the same chat
+  /// cascade as online deletes (see [DeleteItemUseCase]); without it,
+  /// offline deletes would leak Firestore threads.
+  ReplayWishlistOpUseCase(this._repo, {this.deleteChatsForItem});
   final WishlistRepository _repo;
+  final Future<void> Function(String itemId)? deleteChatsForItem;
 
   @override
   Future<void> call(OutboxOperation op) async {
@@ -123,22 +145,32 @@ class ReplayWishlistOpUseCase implements UseCase<void, OutboxOperation> {
       switch (OutboxKind.fromValue(op.kind)) {
         case OutboxKind.wishlistAdd:
           final item = WishlistItemModel.fromJson(op.payload);
+          // Idempotent replay: fetch BEFORE writing. A crash between the
+          // online insert and the dequeue leaves the row behind; blindly
+          // inserting would fail on a duplicate key.
           final existing = await _repo.getItemById(item.id);
           if (existing == null) {
             await _repo.addItem(item);
           } else {
-            // Crash between insert and dequeue: update instead of failing
-            // on a duplicate key.
             await _repo.updateItem(item);
           }
         case OutboxKind.wishlistUpdate:
-          await _repo.updateItem(WishlistItemModel.fromJson(op.payload));
+          final item = WishlistItemModel.fromJson(op.payload);
+          // Fetch-before-update: replaying an update for a row deleted
+          // elsewhere must not resurrect it as an insert.
+          final existing = await _repo.getItemById(item.id);
+          if (existing == null) {
+            await _repo.addItem(item);
+          } else {
+            await _repo.updateItem(item);
+          }
         case OutboxKind.wishlistDelete:
           final id = op.payload['id'];
           if (id is! String || id.isEmpty) {
             throw const FormatException('wishlist_delete op missing id');
           }
           await _repo.deleteItem(id);
+          await deleteChatsForItem?.call(id);
         case OutboxKind.wishlistSubscribe:
           final (subscriberId, targetUserId) = _subscriptionIds(op);
           await _repo.subscribe(subscriberId, targetUserId);

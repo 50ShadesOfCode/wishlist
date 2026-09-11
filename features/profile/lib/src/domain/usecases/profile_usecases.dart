@@ -45,6 +45,15 @@ class RemoveAvatarUseCase implements UseCase<Profile, String> {
   Future<Profile> call(String userId) => _repo.removeAvatar(userId);
 }
 
+class DeleteUploadedAvatarUseCase implements UseCase<void, String> {
+  DeleteUploadedAvatarUseCase(this._repo);
+  final ProfileRepository _repo;
+
+  @override
+  Future<void> call(String avatarUrl) =>
+      _repo.deleteUploadedAvatar(avatarUrl);
+}
+
 class IsUsernameTakenParams {
   const IsUsernameTakenParams({
     required this.username,

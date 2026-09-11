@@ -20,16 +20,61 @@ class ChatRemoteDataSource {
             .toList(),
       );
 
-  Stream<List<ChatMessageModel>> watchMessages(String chatId) => _threads
+  /// Message history, newest [limit] first-then-reversed to chronological.
+  /// Pagination keeps large threads from DOSing the client; pass
+  /// [startAfter] (a `created_at` cursor) for older pages.
+  static const int messagesPageSize = 100;
+
+  Stream<List<ChatMessageModel>> watchMessages(
+    String chatId, {
+    int limit = messagesPageSize,
+  }) => _threads
       .doc(chatId)
       .collection(AppConstants.messagesCollection)
-      .orderBy('created_at')
+      .orderBy('created_at', descending: true)
+      .limit(limit)
       .snapshots()
       .map(
         (s) => s.docs
             .map((d) => ChatMessageModel.fromJson(d.id, d.data()))
+            .toList()
+            .reversed
             .toList(),
       );
+
+  Future<List<ChatMessageModel>> fetchMessagesPage(
+    String chatId, {
+    String? startAfterCreatedAt,
+    int limit = messagesPageSize,
+  }) async {
+    var query = _threads
+        .doc(chatId)
+        .collection(AppConstants.messagesCollection)
+        .orderBy('created_at', descending: true)
+        .limit(limit);
+    if (startAfterCreatedAt != null) {
+      query = query.startAfter([startAfterCreatedAt]);
+    }
+    final snap = await query.get();
+    return snap.docs
+        .map((d) => ChatMessageModel.fromJson(d.id, d.data()))
+        .toList()
+        .reversed
+        .toList();
+  }
+
+  /// Deterministic thread id for an (item, participant-pair) so two users
+  /// tapping Discuss simultaneously converge on one thread instead of
+  /// racing find-then-create into duplicates.
+  static String threadIdFor({
+    required String wishlistItemId,
+    required String ownerId,
+    required String participantId,
+  }) {
+    final pair = [ownerId, participantId]..sort();
+    return '${wishlistItemId}_${pair.join('_')}'
+        .replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+  }
 
   Future<ChatThreadModel> createThread({
     required String wishlistItemId,
@@ -38,15 +83,27 @@ class ChatRemoteDataSource {
     required List<String> participantIds,
   }) async {
     final now = DateTime.now();
-    final doc = await _threads.add({
-      'wishlist_item_id': wishlistItemId,
-      'wishlist_item_name': wishlistItemName,
-      'owner_id': ownerId,
-      'participant_ids': participantIds.toSet().toList(),
-      'created_at': now.toIso8601String(),
+    final participants = participantIds.toSet().toList()..sort();
+    final docId = threadIdFor(
+      wishlistItemId: wishlistItemId,
+      ownerId: ownerId,
+      participantId: participants.length > 1 ? participants.last : ownerId,
+    );
+    final ref = _threads.doc(docId);
+    await _firestore.runTransaction((tx) async {
+      final existing = await tx.get(ref);
+      if (!existing.exists) {
+        tx.set(ref, {
+          'wishlist_item_id': wishlistItemId,
+          'wishlist_item_name': wishlistItemName,
+          'owner_id': ownerId,
+          'participant_ids': participants,
+          'created_at': now.toIso8601String(),
+        });
+      }
     });
-    final snap = await doc.get();
-    return ChatThreadModel.fromJson(doc.id, snap.data()!);
+    final snap = await ref.get();
+    return ChatThreadModel.fromJson(ref.id, snap.data()!);
   }
 
   Future<ChatMessageModel> sendMessage(ChatMessageModel message) async {
@@ -69,28 +126,51 @@ class ChatRemoteDataSource {
   }
 
   /// Existing thread for [wishlistItemId] visible to [userId], if any.
-  /// Participants are filtered client-side to avoid a composite index.
+  /// Server-side `arrayContains` + limit: no unbounded client-side scan.
   Future<ChatThreadModel?> findThreadForItem({
     required String wishlistItemId,
     required String userId,
   }) async {
     final query = await _threads
         .where('wishlist_item_id', isEqualTo: wishlistItemId)
+        .where('participant_ids', arrayContains: userId)
+        .limit(5)
         .get();
-    for (final doc in query.docs) {
-      final thread = ChatThreadModel.fromJson(doc.id, doc.data());
-      if (thread.participantIds.contains(userId)) return thread;
-    }
-    return null;
+    if (query.docs.isEmpty) return null;
+    return ChatThreadModel.fromJson(
+      query.docs.first.id,
+      query.docs.first.data(),
+    );
   }
 
+  /// Deletes threads in bounded pages so large items can't DOS the client.
+  static const int threadDeletePageSize = 50;
+
   Future<void> deleteChatsForItem(String wishlistItemId) async {
-    final query = await _threads
-        .where('wishlist_item_id', isEqualTo: wishlistItemId)
-        .get();
-    for (final doc in query.docs) {
-      await _deleteThreadMessages(doc.reference);
-      await doc.reference.delete();
+    while (true) {
+      final query = await _threads
+          .where('wishlist_item_id', isEqualTo: wishlistItemId)
+          .limit(threadDeletePageSize)
+          .get();
+      if (query.docs.isEmpty) return;
+      for (final doc in query.docs) {
+        await _deleteThreadMessages(doc.reference);
+        await doc.reference.delete();
+      }
+    }
+  }
+
+  Future<void> deleteThreadsForUser(String userId) async {
+    while (true) {
+      final query = await _threads
+          .where('participant_ids', arrayContains: userId)
+          .limit(threadDeletePageSize)
+          .get();
+      if (query.docs.isEmpty) return;
+      for (final doc in query.docs) {
+        await _deleteThreadMessages(doc.reference);
+        await doc.reference.delete();
+      }
     }
   }
 

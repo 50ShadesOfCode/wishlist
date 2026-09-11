@@ -26,6 +26,7 @@ void registerWishlistModule(
   GetIt sl, {
   Future<void> Function(String itemId)? deleteChatsForItem,
 }) {
+  // The same hook serves online deletes and replayed offline deletes.
   sl.registerLazySingleton<WishlistRemoteDataSource>(
     () => WishlistRemoteDataSource(sl<SupabaseClient>()),
   );
@@ -40,6 +41,7 @@ void registerWishlistModule(
   );
   _reg(sl, GetMyItemsUseCase.new);
   _reg(sl, GetVisibleItemsUseCase.new);
+  _reg(sl, GetItemByIdUseCase.new);
   _reg(sl, AddItemUseCase.new);
   _reg(sl, UpdateItemUseCase.new);
   sl.registerLazySingleton(
@@ -52,7 +54,13 @@ void registerWishlistModule(
   _reg(sl, SubscribeUseCase.new);
   _reg(sl, UnsubscribeUseCase.new);
   _reg(sl, GetSubscriptionsUseCase.new);
-  _reg(sl, ReplayWishlistOpUseCase.new);
+  _reg(sl, DeleteAllSubscriptionsForUserUseCase.new);
+  sl.registerLazySingleton(
+    () => ReplayWishlistOpUseCase(
+      sl<WishlistRepository>(),
+      deleteChatsForItem: deleteChatsForItem,
+    ),
+  );
   // Singleton: nested go_router pages (list + edit sub-route) share it
   // via sl().
   sl.registerLazySingleton<WishlistBloc>(

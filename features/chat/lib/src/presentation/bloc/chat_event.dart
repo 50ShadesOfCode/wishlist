@@ -14,8 +14,14 @@ class ChatThreadWatch extends ChatEvent {
 }
 
 class ChatMessagesWatch extends ChatEvent {
-  const ChatMessagesWatch(this.chatId);
+  const ChatMessagesWatch(this.chatId, {this.userId});
   final String chatId;
+
+  /// Current user, when known: scopes the thread-seen mark per user.
+  final String? userId;
+
+  @override
+  List<Object?> get props => [chatId, userId];
 }
 
 /// Internal: a new thread-list snapshot arrived (fed by the bloc's thread

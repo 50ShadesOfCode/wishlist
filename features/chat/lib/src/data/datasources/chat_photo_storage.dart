@@ -16,7 +16,17 @@ class ChatPhotoStorage {
   }) => uploadToBucket(
     _client,
     bucket: AppConstants.avatarsBucket,
-    path: '$senderId/chat/$chatId/${storageFileName(filePath)}',
+    // Stable per (sender, chat, file): a retried send overwrites the same
+    // object (upsert) instead of orphaning duplicates.
+    path:
+        '$senderId/chat/$chatId/${stableStorageFileName('$senderId:$chatId', filePath)}',
     filePath: filePath,
+  );
+
+  /// Best-effort removal of an uploaded chat photo (send-failure rollback).
+  Future<void> deleteByUrl(String imageUrl) => removeByUrls(
+    _client,
+    bucket: AppConstants.avatarsBucket,
+    imageUrls: [imageUrl],
   );
 }

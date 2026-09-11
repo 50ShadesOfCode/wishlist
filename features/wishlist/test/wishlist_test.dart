@@ -173,4 +173,8 @@ class _FakeWishlistRepo implements WishlistRepository {
   @override
   Future<List<Subscription>> mySubscriptions(String subscriberId) =>
       throw UnimplementedError();
+  @override
+  Future<void> deleteAllSubscriptionsForUser(String userId) async {
+    order.add('subs:$userId');
+  }
 }

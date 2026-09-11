@@ -41,11 +41,6 @@ Future<void> configureDependencies() async {
   // chat deletion for item deletes, and new-message notifications.
   registerAuthModule(sl);
   registerProfileModule(sl);
-  registerWishlistModule(
-    sl,
-    // Lazy closure (not a tear-off): ChatRepository registers below.
-    deleteChatsForItem: (id) => sl<ChatRepository>().deleteChatsForItem(id),
-  );
   registerChatModule(
     sl,
     onNewMessage: (thread) => sl<NotificationService>().showNewMessage(
@@ -55,5 +50,10 @@ Future<void> configureDependencies() async {
           : 'Secret discussion',
       body: thread.lastMessageText ?? 'New message',
     ),
+  );
+  registerWishlistModule(
+    sl,
+    // Via use-case (never sl<ChatRepository> here): chat registers above.
+    deleteChatsForItem: (id) => sl<DeleteChatsForItemUseCase>().call(id),
   );
 }
