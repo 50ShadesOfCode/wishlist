@@ -107,9 +107,11 @@ class AuthRepositoryImpl implements AuthRepository {
     }
   }
 
+  /// Firebase SDK is the source of truth for the current session. No Hive
+  /// `cachedUser` fallback: a stale cache entry would resurrect a ghost
+  /// session after sign-out (cross-user leak).
   @override
-  Future<AppUser?> currentUser() async =>
-      _remote.currentUser() ?? _local.cachedUser();
+  Future<AppUser?> currentUser() async => _remote.currentUser();
 
   @override
   Future<void> deleteAccount() async {

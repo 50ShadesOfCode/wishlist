@@ -18,25 +18,43 @@ class SupabaseSessionBridge {
 
   String? _bridgedForUid;
 
-  Future<void> ensureSession() async {
+  /// Installs a Supabase session for the current Firebase user. Skips the
+  /// network round-trip when a session for the same user is already
+  /// installed, unless [forceRefresh] forces a fresh Firebase ID token and a
+  /// new bridge exchange (used after 401/expiry).
+  Future<void> ensureSession({bool forceRefresh = false}) async {
     final fbUser = _firebase.currentUser;
     if (fbUser == null) return;
 
-    final current = _supabase.auth.currentSession;
-    final bridgedUid = current?.user.userMetadata?['firebase_uid'] as String?;
-    if (current != null && bridgedUid == fbUser.uid) {
-      _bridgedForUid = fbUser.uid;
-      return;
+    if (!forceRefresh) {
+      final current = _supabase.auth.currentSession;
+      final bridgedUid =
+          current?.user.userMetadata?['firebase_uid'] as String?;
+      if (current != null && bridgedUid == fbUser.uid) {
+        _bridgedForUid = fbUser.uid;
+        return;
+      }
+      if (_bridgedForUid == fbUser.uid && current != null) return;
     }
-    if (_bridgedForUid == fbUser.uid && current != null) return;
 
-    final idToken = await fbUser.getIdToken();
+    final idToken = await fbUser.getIdToken(forceRefresh);
     final res = await _supabase.functions.invoke(
       'firebase-bridge',
       body: {'firebase_token': idToken},
     );
     final data = Map<String, dynamic>.from(res.data as Map);
-    await _supabase.auth.setSession(data['refresh_token'] as String);
+    // The Edge Function reports failures inside the payload (HTTP 200 with
+    // an `error` field); installing a session from it would silently keep
+    // RLS identity broken.
+    final bridgeError = data['error'];
+    if (bridgeError != null) {
+      throw Exception('firebase-bridge: $bridgeError');
+    }
+    final refreshToken = data['refresh_token'];
+    if (refreshToken is! String || refreshToken.isEmpty) {
+      throw Exception('firebase-bridge: missing refresh_token');
+    }
+    await _supabase.auth.setSession(refreshToken);
     _bridgedForUid = fbUser.uid;
   }
 

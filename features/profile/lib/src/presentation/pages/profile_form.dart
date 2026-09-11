@@ -12,6 +12,10 @@ import '../widgets/avatar_section.dart';
 import '../widgets/settings_section.dart';
 import '../../domain/entities/profile.dart';
 
+/// Rejects picked images larger than this (after picker compression) before
+/// any upload starts.
+const maxAvatarBytes = 10 * 1024 * 1024;
+
 /// Telegram-like combined Profile + Settings screen UI. Requires a
 /// [ProfileBloc] above it in the tree (provided by [ProfilePage]).
 class ProfileForm extends StatefulWidget {
@@ -43,7 +47,6 @@ class ProfileForm extends StatefulWidget {
 }
 
 class _ProfileFormState extends State<ProfileForm> {
-  final _formKey = GlobalKey<FormBuilderState>();
   late bool _dark;
 
   @override
@@ -53,16 +56,43 @@ class _ProfileFormState extends State<ProfileForm> {
     BlocProvider.of<ProfileBloc>(context).add(ProfileLoaded(widget.userId));
   }
 
+  @override
+  void didUpdateWidget(ProfileForm oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A new user id (re-login without a full route rebuild) reloads from
+    // scratch; the ValueKey on FormBuilder below resets the form fields.
+    if (oldWidget.userId != widget.userId) {
+      BlocProvider.of<ProfileBloc>(context).add(ProfileLoaded(widget.userId));
+    }
+  }
+
   Future<void> _pickAvatar(Profile current) async {
     final picker = ImagePicker();
     late final XFile? file;
     try {
-      file = await picker.pickImage(source: ImageSource.gallery);
+      file = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
     } catch (_) {
       // Permission denial etc.: stay silent, keep current avatar.
       return;
     }
     if (file == null) return;
+    if (!mounted) return;
+    // Byte-size guard: even compressed, an absurd file is rejected before
+    // the bloc uploads anything to storage.
+    try {
+      if (await file.length() > maxAvatarBytes) {
+        if (!mounted) return;
+        showAppSnack(context, 'image_too_large'.tr());
+        return;
+      }
+    } catch (_) {
+      return;
+    }
     if (!mounted) return;
     // Uploaded by the bloc; the stored avatar_url becomes a public URL,
     // never a device-local path.
@@ -78,9 +108,33 @@ class _ProfileFormState extends State<ProfileForm> {
         errorOf: (s) => s.error,
         child: BlocBuilder<ProfileBloc, ProfileState>(
           builder: (context, state) {
-            final profile =
-                state.profile ??
-                Profile(userId: widget.userId, username: 'user');
+            // Hold loading until the first profile emission: building the
+            // form from a `username: 'user'` fallback would clobber the real
+            // username on save. Save/avatar stay disabled while null.
+            final profile = state.profile;
+            if (profile == null) {
+              return Center(
+                child: state.isLoading
+                    ? const CircularProgressIndicator()
+                    : Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('profile_not_loaded'.tr()),
+                            const SizedBox(height: 12),
+                            AppButton(
+                              label: 'retry'.tr(),
+                              onPressed: () =>
+                                  BlocProvider.of<ProfileBloc>(context).add(
+                                    ProfileLoaded(widget.userId),
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+              );
+            }
             return SingleChildScrollView(
               padding: const EdgeInsets.all(20),
             child: Column(
@@ -96,7 +150,9 @@ class _ProfileFormState extends State<ProfileForm> {
                 ),
                 const SizedBox(height: 16),
                   FormBuilder(
-                    key: _formKey,
+                    // Keyed by userId + loaded flag so the form resets when a
+                    // different user signs in and never shows stale values.
+                    key: ValueKey('${widget.userId}_loaded'),
                     initialValue: {
                       'username': profile.username,
                       'city': profile.city,
@@ -130,24 +186,26 @@ class _ProfileFormState extends State<ProfileForm> {
                         decoration: InputDecoration(labelText: 'city'.tr()),
                       ),
                         const SizedBox(height: 16),
-                        AppButton(
-                          label: 'save_profile'.tr(),
-                          isLoading: state.isLoading,
-                          onPressed: () {
-                            if (_formKey.currentState?.saveAndValidate() ??
-                                false) {
-                              final v = _formKey.currentState!.value;
-                              BlocProvider.of<ProfileBloc>(context).add(
-                                ProfileUpdated(
-                                  profile.copyWith(
-                                    username: v['username'] as String,
-                                    dateOfBirth: v['dob'] as DateTime?,
-                                    city: v['city'] as String?,
+                        Builder(
+                          builder: (formContext) => AppButton(
+                            label: 'save_profile'.tr(),
+                            isLoading: state.isLoading,
+                            onPressed: () {
+                              final form = FormBuilder.of(formContext);
+                              if (form?.saveAndValidate() ?? false) {
+                                final v = form!.value;
+                                BlocProvider.of<ProfileBloc>(context).add(
+                                  ProfileUpdated(
+                                    profile.copyWith(
+                                      username: v['username'] as String,
+                                      dateOfBirth: v['dob'] as DateTime?,
+                                      city: v['city'] as String?,
+                                    ),
                                   ),
-                                ),
-                              );
-                            }
-                          },
+                                );
+                              }
+                            },
+                          ),
                         ),
                       ],
                     ),

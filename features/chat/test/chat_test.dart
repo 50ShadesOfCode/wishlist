@@ -27,4 +27,12 @@ void main() {
     expect(s.copyWith().error, isNull);
     expect(s.copyWith(error: 'boom').error, 'boom');
   });
+
+  test('ChatState copyWith can clear activeChatId, preserves when omitted', () {
+    const s = ChatState(activeChatId: 'c1');
+    expect(s.copyWith().activeChatId, 'c1');
+    expect(s.copyWith(activeChatId: 'c2').activeChatId, 'c2');
+    expect(s.copyWith(activeChatId: null).activeChatId, isNull);
+    expect(s.copyWith(clearActiveChat: true).activeChatId, isNull);
+  });
 }

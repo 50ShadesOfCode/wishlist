@@ -18,6 +18,7 @@ class WishlistBloc extends Bloc<WishlistEvent, WishlistState> {
     on<WishlistUpdate>(_onUpdate);
     on<WishlistDelete>(_onDelete);
     on<WishlistToggleHide>(_onToggle);
+    on<WishlistReset>(_onReset);
   }
 
   final GetMyItemsUseCase _getMyItems;
@@ -105,5 +106,9 @@ class WishlistBloc extends Bloc<WishlistEvent, WishlistState> {
     } catch (err) {
       emit(state.copyWith(items: previous, error: err.toString()));
     }
+  }
+
+  void _onReset(WishlistReset e, Emitter<WishlistState> emit) {
+    emit(const WishlistState());
   }
 }

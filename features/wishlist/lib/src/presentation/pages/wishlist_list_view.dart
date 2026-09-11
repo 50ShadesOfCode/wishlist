@@ -61,33 +61,67 @@ class _WishlistListViewState extends State<WishlistListView> {
               child: const Icon(Icons.add),
             )
           : null,
-      body: Column(
-        children: [
-          SyncBanner(outbox: widget.outbox, onSyncNow: widget.onSyncNow),
-          Expanded(
-            child: BlocBuilder<WishlistBloc, WishlistState>(
-              builder: (context, state) {
-                if (state.isLoading && state.items.isEmpty) {
-                  return ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: 5,
-                    itemBuilder: (_, _) => const Padding(
-                      padding: EdgeInsets.only(bottom: 12),
-                      child: LoadingShimmer(height: 120),
-                    ),
-                  );
-                }
-                if (state.items.isEmpty) {
-                  return EmptyState(
-                    title: 'no_items'.tr(),
-                    subtitle: 'no_items_hint'.tr(),
-                  );
-                }
-                return AppSkeleton(
-                  enabled: state.isLoading,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: state.items.length,
+      body: AppErrorListener<WishlistBloc, WishlistState>(
+        errorOf: (s) => s.error,
+        child: Column(
+          children: [
+            SyncBanner(outbox: widget.outbox, onSyncNow: widget.onSyncNow),
+            Expanded(
+              child: BlocBuilder<WishlistBloc, WishlistState>(
+                builder: (context, state) {
+                  if (state.isLoading && state.items.isEmpty) {
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: 5,
+                      itemBuilder: (_, _) => const Padding(
+                        padding: EdgeInsets.only(bottom: 12),
+                        child: LoadingShimmer(height: 120),
+                      ),
+                    );
+                  }
+                  // Load failure with nothing cached: an explicit error +
+                  // retry instead of the misleading "no items" empty state
+                  // (which invited duplicate re-adds).
+                  if (state.items.isEmpty) {
+                    if (state.error != null) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('load_failed'.tr()),
+                              const SizedBox(height: 12),
+                              AppButton(
+                                label: 'retry'.tr(),
+                                onPressed: () =>
+                                    BlocProvider.of<WishlistBloc>(context).add(
+                                      WishlistLoad(widget.ownerId),
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+                    return EmptyState(
+                      title: 'no_items'.tr(),
+                      subtitle: 'no_items_hint'.tr(),
+                    );
+                  }
+                  // Non-empty items survive a failed refresh (old list kept,
+                  // error already surfaced via AppErrorListener); pull to
+                  // retry the load.
+                  return AppSkeleton(
+                    enabled: state.isLoading,
+                    child: RefreshIndicator(
+                      onRefresh: () async =>
+                          BlocProvider.of<WishlistBloc>(context).add(
+                            WishlistLoad(widget.ownerId),
+                          ),
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: state.items.length,
                     itemBuilder: (context, i) {
                       final item = state.items[i];
                       return Padding(
@@ -138,12 +172,14 @@ class _WishlistListViewState extends State<WishlistListView> {
                         ),
                       );
                     },
-                  ),
-                );
+                      ),
+                    ),
+                  );
               },
             ),
           ),
-        ],
+          ],
+        ),
       ),
     );
   }

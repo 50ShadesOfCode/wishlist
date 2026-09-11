@@ -11,6 +11,11 @@ import 'package:latlong2/latlong.dart';
 import '../../domain/entities/wishlist_item.dart';
 import '../bloc/wishlist_bloc.dart';
 import '../bloc/wishlist_event.dart';
+import '../bloc/wishlist_state.dart';
+
+/// Rejects picked images larger than this (after picker compression) before
+/// they are attached to the wish.
+const maxItemImageBytes = 10 * 1024 * 1024;
 
 /// Add/edit wish screen UI. Requires a [WishlistBloc] above it in the tree
 /// (provided by [WishlistEditPage]).
@@ -40,6 +45,15 @@ class _WishlistEditFormState extends State<WishlistEditForm> {
   LatLng? _place;
   bool _hidden = false;
 
+  /// Generated once per form instance: retries and rebuilds reuse the same
+  /// id, so double-taps can never create duplicates.
+  late final String _formId =
+      widget.existing?.id ?? generateId();
+
+  /// True between dispatching a save/delete and its completion. The pop
+  /// happens only when the bloc reports success (see the BlocListener).
+  bool _awaitingResult = false;
+
   @override
   void initState() {
     super.initState();
@@ -55,8 +69,33 @@ class _WishlistEditFormState extends State<WishlistEditForm> {
 
   Future<void> _pickImages() async {
     final picker = ImagePicker();
-    final files = await picker.pickMultiImage();
-    setState(() => _images.addAll(files.map((f) => f.path)));
+    late final List<XFile> files;
+    try {
+      files = await picker.pickMultiImage(
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 85,
+      );
+    } catch (_) {
+      // Permission denial etc.: stay silent, keep current images.
+      return;
+    }
+    if (!mounted) return;
+    // Byte-size guard per file: oversized picks are dropped before they are
+    // attached (and later uploaded) to the wish.
+    final accepted = <String>[];
+    for (final f in files) {
+      try {
+        if (await f.length() <= maxItemImageBytes) accepted.add(f.path);
+      } catch (_) {
+        // Unreadable pick: skip it.
+      }
+    }
+    if (!mounted) return;
+    if (accepted.length < files.length) {
+      showAppSnack(context, 'image_too_large'.tr());
+    }
+    setState(() => _images.addAll(accepted));
   }
 
   /// Resolves the device position for the map locate button. Throws a
@@ -80,6 +119,7 @@ class _WishlistEditFormState extends State<WishlistEditForm> {
   }
 
   void _save() {
+    if (_awaitingResult) return;
     if (!(_formKey.currentState?.saveAndValidate() ?? false)) return;
     final v = _formKey.currentState!.value;
     var placeLabel = v['place'] as String?;
@@ -89,7 +129,7 @@ class _WishlistEditFormState extends State<WishlistEditForm> {
       _formKey.currentState!.fields['place']?.didChange(placeLabel);
     }
     final item = WishlistItem(
-      id: widget.existing?.id ?? generateId(),
+      id: _formId,
       ownerId: widget.ownerId,
       name: v['name'] as String,
       description: v['description'] as String?,
@@ -100,12 +140,34 @@ class _WishlistEditFormState extends State<WishlistEditForm> {
       isHidden: _hidden,
       createdAt: widget.existing?.createdAt ?? DateTime.now(),
     );
+    // The pop happens in the BlocListener on success only: failures surface
+    // via AppErrorListener with the input intact for a retry.
+    _awaitingResult = true;
     if (widget.existing == null) {
       BlocProvider.of<WishlistBloc>(context).add(WishlistAdd(item));
     } else {
       BlocProvider.of<WishlistBloc>(context).add(WishlistUpdate(item));
     }
-    Navigator.of(context).pop();
+  }
+
+  void _delete() {
+    final existing = widget.existing;
+    if (existing == null || _awaitingResult) return;
+    _awaitingResult = true;
+    BlocProvider.of<WishlistBloc>(context).add(WishlistDelete(existing.id));
+  }
+
+  /// Pops only on the success emission that answers our pending save/delete.
+  /// Failures keep the form (and its input) open; the error itself surfaces
+  /// through [AppErrorListener].
+  void _onBlocState(BuildContext context, WishlistState s) {
+    if (!_awaitingResult || s.isLoading) return;
+    if (s.error != null) {
+      _awaitingResult = false;
+      return;
+    }
+    _awaitingResult = false;
+    if (context.mounted) Navigator.of(context).pop();
   }
 
   @override
@@ -125,66 +187,81 @@ class _WishlistEditFormState extends State<WishlistEditForm> {
           if (widget.existing != null)
             IconButton(
               icon: const Icon(Icons.delete_outline),
-              onPressed: () {
-                BlocProvider.of<WishlistBloc>(context)
-                    .add(WishlistDelete(widget.existing!.id));
-                Navigator.of(context).pop();
-              },
+              onPressed: _awaitingResult ? null : _delete,
             ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: FormBuilder(
-          key: _formKey,
-          initialValue: {
-            'name': widget.existing?.name,
-            'description': widget.existing?.description,
-            'place': widget.existing?.placeLabel,
-          },
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (_images.isNotEmpty) ItemCarousel(imageUrls: _images),
-              AppButton(
-                label: 'pick_images'.tr(),
-                outlined: true,
-                icon: Icons.photo_library_outlined,
-                onPressed: _pickImages,
+      body: AppErrorListener<WishlistBloc, WishlistState>(
+        errorOf: (s) => s.error,
+        child: BlocListener<WishlistBloc, WishlistState>(
+          listener: _onBlocState,
+          child: BlocBuilder<WishlistBloc, WishlistState>(
+            builder: (context, state) => SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: FormBuilder(
+                key: _formKey,
+                initialValue: {
+                  'name': widget.existing?.name,
+                  'description': widget.existing?.description,
+                  'place': widget.existing?.placeLabel,
+                },
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_images.isNotEmpty) ItemCarousel(imageUrls: _images),
+                    AppButton(
+                      label: 'pick_images'.tr(),
+                      outlined: true,
+                      icon: Icons.photo_library_outlined,
+                      isLoading: state.isLoading,
+                      onPressed: state.isLoading ? null : _pickImages,
+                    ),
+                    const SizedBox(height: 12),
+                    FormBuilderTextField(
+                      name: 'name',
+                      validator: AppValidators.requiredField,
+                      decoration: InputDecoration(labelText: 'name'.tr()),
+                    ),
+                    const SizedBox(height: 12),
+                    FormBuilderTextField(
+                      name: 'description',
+                      maxLines: 3,
+                      decoration: InputDecoration(
+                        labelText: 'description'.tr(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    FormBuilderTextField(
+                      name: 'place',
+                      decoration: InputDecoration(
+                        labelText: 'place_label'.tr(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text('mark_place'.tr()),
+                    const SizedBox(height: 8),
+                    MapPicker(
+                      initial: _place,
+                      onPicked: (p) => setState(() => _place = p),
+                      onLocateMe: _locateMe,
+                    ),
+                    SwitchListTile(
+                      title: Text('hide_from_others'.tr()),
+                      value: _hidden,
+                      onChanged: state.isLoading
+                          ? null
+                          : (v) => setState(() => _hidden = v),
+                    ),
+                    const SizedBox(height: 12),
+                    AppButton(
+                      label: 'save'.tr(),
+                      isLoading: state.isLoading,
+                      onPressed: state.isLoading ? null : _save,
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 12),
-              FormBuilderTextField(
-                name: 'name',
-                validator: AppValidators.requiredField,
-                decoration: InputDecoration(labelText: 'name'.tr()),
-              ),
-              const SizedBox(height: 12),
-              FormBuilderTextField(
-                name: 'description',
-                maxLines: 3,
-                decoration: InputDecoration(labelText: 'description'.tr()),
-              ),
-              const SizedBox(height: 12),
-              FormBuilderTextField(
-                name: 'place',
-                decoration: InputDecoration(labelText: 'place_label'.tr()),
-              ),
-              const SizedBox(height: 12),
-              Text('mark_place'.tr()),
-              const SizedBox(height: 8),
-              MapPicker(
-                initial: _place,
-                onPicked: (p) => setState(() => _place = p),
-                onLocateMe: _locateMe,
-              ),
-              SwitchListTile(
-                title: Text('hide_from_others'.tr()),
-                value: _hidden,
-                onChanged: (v) => setState(() => _hidden = v),
-              ),
-              const SizedBox(height: 12),
-              AppButton(label: 'save'.tr(), onPressed: _save),
-            ],
+            ),
           ),
         ),
       ),

@@ -23,6 +23,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AppleSignInRequested>(_onApple);
     on<SignOutRequested>(_onSignOut);
     on<PasswordResetRequested>(_onReset);
+    on<PasswordResetConsumed>(_onResetConsumed);
     on<DeleteAccountRequested>(_onDeleteAccount);
   }
 
@@ -133,8 +134,15 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   }
 
   Future<void> _onSignOut(SignOutRequested e, Emitter<AuthState> emit) async {
-    await _signOut(const NoParams());
-    emit(const AuthState(status: AuthStatus.unauthenticated));
+    emit(state.copyWith(isLoading: true, error: null));
+    try {
+      await _signOut(const NoParams());
+      emit(const AuthState(status: AuthStatus.unauthenticated));
+    } on Failure catch (f) {
+      emit(state.copyWith(isLoading: false, error: f.message));
+    } catch (err) {
+      emit(state.copyWith(isLoading: false, error: err.toString()));
+    }
   }
 
   Future<void> _onDeleteAccount(
@@ -171,6 +179,12 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       emit(state.copyWith(isLoading: false, error: f.message));
     } catch (e) {
       emit(state.copyWith(isLoading: false, error: e.toString()));
+    }
+  }
+
+  void _onResetConsumed(PasswordResetConsumed e, Emitter<AuthState> emit) {
+    if (state.passwordResetSent) {
+      emit(state.copyWith(passwordResetSent: false));
     }
   }
 }

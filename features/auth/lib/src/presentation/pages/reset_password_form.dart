@@ -26,6 +26,11 @@ class ResetPasswordForm extends StatelessWidget {
           listener: (context, s) {
             if (s.passwordResetSent) {
               showAppSnack(context, 'restore_sent'.tr());
+              // One-shot: clear the flag so the confirmation never re-fires
+              // on rebuilds or when revisiting this page.
+              BlocProvider.of<AuthBloc>(context).add(
+                const PasswordResetConsumed(),
+              );
             }
           },
           builder: (context, state) {

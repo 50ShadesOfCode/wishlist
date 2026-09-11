@@ -25,18 +25,13 @@ GoRouter createRouter(AuthBloc authBloc) {
     routes: [
       GoRoute(
         path: '/signin',
-        builder: (context, _) => SignInPage(
-          onGoSignUp: () => context.go('/signup'),
-          onGoReset: () => context.go('/reset'),
-          onSuccess: () => context.go('/wishlist'),
-        ),
+        builder: (context, _) =>
+            SignInPage(onGoSignUp: () => context.go('/signup'), onGoReset: () => context.go('/reset')),
       ),
       GoRoute(
         path: '/signup',
-        builder: (context, _) => SignUpPage(
-          onGoSignIn: () => context.go('/signin'),
-          onSuccess: () => context.go('/wishlist'),
-        ),
+        builder: (context, _) =>
+            SignUpPage(onGoSignIn: () => context.go('/signin')),
       ),
       GoRoute(path: '/reset', builder: (_, _) => const ResetPasswordPage()),
       StatefulShellRoute.indexedStack(
@@ -47,7 +42,12 @@ GoRouter createRouter(AuthBloc authBloc) {
               GoRoute(
                 path: '/wishlist',
                 builder: (context, _) {
-                  final userId = authBloc.state.user?.id ?? 'local-user';
+                  // No guest fallback: the auth guard only lets authenticated
+                  // users reach this branch. While the initial AuthChecked is
+                  // pending (unknown) the user is null, so hold a loading
+                  // screen; the guard re-fires once auth resolves.
+                  final userId = authBloc.state.user?.id;
+                  if (userId == null) return const AuthPendingScreen();
                   // Pages provide the shared singleton blocs themselves;
                   // the router only reads state for lookups. The initial
                   // load is dispatched once in WishlistListView initState.
@@ -69,12 +69,16 @@ GoRouter createRouter(AuthBloc authBloc) {
                 routes: [
                   GoRoute(
                     path: 'edit',
-                    builder: (context, state) => WishlistEditPage(
-                      ownerId: authBloc.state.user?.id ?? 'local-user',
-                      existing: state.extra as WishlistItem?,
-                      onDiscuss: (item) =>
-                          openItemChat(context, authBloc, item),
-                    ),
+                    builder: (context, state) {
+                      final userId = authBloc.state.user?.id;
+                      if (userId == null) return const AuthPendingScreen();
+                      return WishlistEditPage(
+                        ownerId: userId,
+                        existing: state.extra as WishlistItem?,
+                        onDiscuss: (item) =>
+                            openItemChat(context, authBloc, item),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -85,7 +89,8 @@ GoRouter createRouter(AuthBloc authBloc) {
               GoRoute(
                 path: '/chats',
                 builder: (context, _) {
-                  final userId = authBloc.state.user?.id ?? 'local-user';
+                  final userId = authBloc.state.user?.id;
+                  if (userId == null) return const AuthPendingScreen();
                   // Watch is dispatched once in ChatListView initState; do
                   // not add it here or rebuilds duplicate subscriptions.
                   return ChatListPage(
@@ -98,9 +103,11 @@ GoRouter createRouter(AuthBloc authBloc) {
                     path: ':id',
                     builder: (_, state) {
                       final id = state.pathParameters['id']!;
+                      final userId = authBloc.state.user?.id;
+                      if (userId == null) return const AuthPendingScreen();
                       return ChatThreadPage(
                         chatId: id,
-                        currentUserId: authBloc.state.user?.id ?? 'local-user',
+                        currentUserId: userId,
                       );
                     },
                   ),
@@ -113,7 +120,8 @@ GoRouter createRouter(AuthBloc authBloc) {
               GoRoute(
                 path: '/following',
                 builder: (context, _) {
-                  final userId = authBloc.state.user?.id ?? 'local-user';
+                  final userId = authBloc.state.user?.id;
+                  if (userId == null) return const AuthPendingScreen();
                   return SubscriptionsPage(
                     userId: userId,
                     onLoadSubscriptions: () =>
@@ -152,8 +160,11 @@ GoRouter createRouter(AuthBloc authBloc) {
             routes: [
               GoRoute(
                 path: '/profile',
-                builder: (context, _) => ProfilePage(
-                  userId: authBloc.state.user?.id ?? 'local-user',
+                builder: (context, _) {
+                  final userId = authBloc.state.user?.id;
+                  if (userId == null) return const AuthPendingScreen();
+                  return ProfilePage(
+                    userId: userId,
                   isDark: sl<ThemeController>().isDark,
                   onChangeTheme: (dark) => sl<ThemeController>().setDark(dark),
                   initialLocale: context.locale,
@@ -184,7 +195,8 @@ GoRouter createRouter(AuthBloc authBloc) {
                     authBloc.add(const DeleteAccountRequested());
                   },
                   onChangePassword: () => context.push('/profile/password'),
-                ),
+                  );
+                },
                 routes: [
                   GoRoute(
                     path: 'password',
@@ -206,4 +218,17 @@ GoRouter createRouter(AuthBloc authBloc) {
       ),
     ],
   );
+}
+
+/// Splash held while the initial [AuthChecked] is pending (`unknown`) or the
+/// auth state resolves. The guard re-fires once auth settles, so this never
+/// strands the user; it only preserves the in-flight location instead of
+/// clobbering it to `/signin`.
+class AuthPendingScreen extends StatelessWidget {
+  const AuthPendingScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(body: Center(child: CircularProgressIndicator()));
+  }
 }

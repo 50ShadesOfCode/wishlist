@@ -19,9 +19,13 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     this._onNewMessage,
   }) : super(const ChatState()) {
     on<ChatThreadWatch>(_onThreads);
+    on<ChatThreadsUpdated>(_onThreadsUpdated);
+    on<ChatThreadsFailed>(_onThreadsFailed);
     on<ChatMessagesWatch>(_onMessages);
     on<ChatMessagesUpdated>(_onMessagesUpdated);
     on<ChatMessagesFailed>(_onMessagesFailed);
+    on<ChatThreadClosed>(_onThreadClosed);
+    on<ChatReset>(_onReset);
     on<ChatTextSend>(_onSendText);
     on<ChatPhotoSend>(_onSendPhoto);
     on<ChatUnreadRefresh>(_onUnreadRefresh);
@@ -38,6 +42,13 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   /// Skipped for the currently open thread.
   final Future<void> Function(ChatThread thread)? _onNewMessage;
 
+  /// Active thread-list subscription. Replaced (with cancel) on every
+  /// [ChatThreadWatch] so re-watches never stack overlapping streams.
+  /// A manual subscription (not `emit.forEach`) because the stream is
+  /// infinite: awaiting `forEach` under the default sequential transformer
+  /// would block the event queue and starve message/sends events.
+  StreamSubscription<List<ChatThread>>? _threadsSub;
+
   /// Active message subscription. Replaced (with cancel) on every
   /// [ChatMessagesWatch] so rapid thread switches never leave overlapping
   /// streams writing into each other's state.
@@ -45,22 +56,28 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
   @override
   Future<void> close() {
+    _threadsSub?.cancel();
     _messagesSub?.cancel();
     return super.close();
   }
 
   Future<void> _onThreads(ChatThreadWatch e, Emitter<ChatState> emit) async {
+    await _threadsSub?.cancel();
     emit(state.copyWith(isLoading: true));
-    await emit.forEach<List<ChatThread>>(
-      _watchThreads(e.userId),
-      onData: (threads) {
-        // Unread computation needs Hive (async): queue it separately.
-        add(ChatUnreadRefresh(threads, e.userId));
-        return state.copyWith(threads: threads, isLoading: false);
-      },
-      onError: (err, _) =>
-          state.copyWith(error: err.toString(), isLoading: false),
+    _threadsSub = _watchThreads(e.userId).listen(
+      (threads) => add(ChatThreadsUpdated(threads, e.userId)),
+      onError: (Object err) => add(ChatThreadsFailed(err.toString())),
     );
+  }
+
+  void _onThreadsUpdated(ChatThreadsUpdated e, Emitter<ChatState> emit) {
+    // Unread computation needs Hive (async): queue it separately.
+    add(ChatUnreadRefresh(e.threads, e.userId));
+    emit(state.copyWith(threads: e.threads, isLoading: false));
+  }
+
+  void _onThreadsFailed(ChatThreadsFailed e, Emitter<ChatState> emit) {
+    emit(state.copyWith(error: e.error, isLoading: false));
   }
 
   Future<void> _onMessages(ChatMessagesWatch e, Emitter<ChatState> emit) async {
@@ -78,17 +95,48 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       state.copyWith(unreadChatIds: state.unreadChatIds.difference({e.chatId})),
     );
     _messagesSub = _watchMessages(e.chatId).listen(
-      (messages) => add(ChatMessagesUpdated(messages)),
-      onError: (Object err) => add(ChatMessagesFailed(err.toString())),
+      (messages) => add(ChatMessagesUpdated(e.chatId, messages)),
+      onError: (Object err) => add(ChatMessagesFailed(e.chatId, err.toString())),
     );
   }
 
   void _onMessagesUpdated(ChatMessagesUpdated e, Emitter<ChatState> emit) {
+    // Stale-thread guard: a late snapshot from the previously-open thread
+    // must not overwrite the newly-opened thread's messages.
+    if (e.chatId != state.activeChatId) return;
     emit(state.copyWith(messages: e.messages, isLoading: false));
   }
 
   void _onMessagesFailed(ChatMessagesFailed e, Emitter<ChatState> emit) {
+    if (e.chatId != state.activeChatId) return;
     emit(state.copyWith(error: e.error, isLoading: false));
+  }
+
+  Future<void> _onThreadClosed(
+    ChatThreadClosed e,
+    Emitter<ChatState> emit,
+  ) async {
+    await _messagesSub?.cancel();
+    _messagesSub = null;
+    emit(
+      state.copyWith(messages: const [], isLoading: false, clearActiveChat: true),
+    );
+  }
+
+  /// Drops subscriptions and returns to the initial state so the next
+  /// signed-in user never sees the previous user's threads or messages.
+  Future<void> _onReset(ChatReset e, Emitter<ChatState> emit) async {
+    await _threadsSub?.cancel();
+    _threadsSub = null;
+    await _messagesSub?.cancel();
+    _messagesSub = null;
+    emit(const ChatState());
+  }
+
+  /// Clears the open thread without dispatching an event (for hosts that
+  /// already hold the bloc, e.g. route observers).
+  Future<void> clearActiveChat() async {
+    add(const ChatThreadClosed());
   }
 
   Future<void> _onUnreadRefresh(

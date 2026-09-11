@@ -69,5 +69,9 @@
   "unfollow": "Unfollow",
   "pull_retry": "Pull to retry",
   "pending_sync": "Offline changes waiting to sync",
-  "sync_now": "Sync now"
+  "sync_now": "Sync now",
+  "retry": "Retry",
+  "load_failed": "Couldn't load data",
+  "image_too_large": "Image is too large",
+  "profile_not_loaded": "Profile isn't loaded yet"
 }

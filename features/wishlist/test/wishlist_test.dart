@@ -67,7 +67,7 @@ void main() {
     await bloc.close();
   });
 
-  test('WishlistBloc deletes chats before the item', () async {
+  test('WishlistBloc deletes the item before its chats', () async {
     final order = <String>[];
     final repo = _FakeWishlistRepo(order);
     final bloc = WishlistBloc(
@@ -82,12 +82,13 @@ void main() {
     );
     bloc.add(const WishlistDelete('i1'));
     await Future<void>.delayed(const Duration(milliseconds: 100));
-    expect(order, ['chats:i1', 'item:i1']);
+    expect(order, ['item:i1', 'chats:i1']);
     await bloc.close();
   });
 
-  test('WishlistBloc keeps item when chat delete fails', () async {
-    final repo = _FakeWishlistRepo(<String>[]);
+  test('WishlistBloc surfaces chat-cleanup failure after item delete', () async {
+    final order = <String>[];
+    final repo = _FakeWishlistRepo(order);
     final bloc = WishlistBloc(
       getMyItems: GetMyItemsUseCase(repo),
       addItem: AddItemUseCase(repo),
@@ -100,18 +101,21 @@ void main() {
     );
     bloc.add(const WishlistDelete('i1'));
     final failed = await bloc.stream.firstWhere((s) => s.error != null);
+    // Item-first ordering: the row is already gone; the error tells the
+    // caller to retry the idempotent chat cleanup.
+    expect(order, ['item:i1']);
     expect(failed.error, contains('firestore down'));
     await bloc.close();
   });
 
-  test('DeleteItemUseCase deletes chats before the item', () async {
+  test('DeleteItemUseCase deletes the item before its chats', () async {
     final order = <String>[];
     final usecase = DeleteItemUseCase(
       _FakeWishlistRepo(order),
       deleteChatsForItem: (id) async => order.add('chats:$id'),
     );
     await usecase('i1');
-    expect(order, ['chats:i1', 'item:i1']);
+    expect(order, ['item:i1', 'chats:i1']);
   });
 
   test('GetMyItemsUseCase delegates to the repository', () async {

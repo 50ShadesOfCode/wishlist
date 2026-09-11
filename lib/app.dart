@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:auth/auth.dart';
+import 'package:chat/chat.dart';
 import 'package:core/core.dart';
 import 'package:core_ui/core_ui.dart';
 import 'package:easy_localization/easy_localization.dart';
@@ -72,6 +73,19 @@ class _WishlistAppState extends State<WishlistApp> {
     final user = state.user;
     if (state.status != AuthStatus.authenticated || user == null) {
       _profileEnsuredFor = null;
+      // Privacy: singleton blocs keep the previous user's state; reset them
+      // to initial on every sign-out so the next user starts clean.
+      // Dispatched as events (not direct emits) so subscriptions cancel
+      // properly inside each bloc.
+      if (sl.isRegistered<WishlistBloc>()) {
+        sl<WishlistBloc>().add(const WishlistReset());
+      }
+      if (sl.isRegistered<ProfileBloc>()) {
+        sl<ProfileBloc>().add(const ProfileReset());
+      }
+      if (sl.isRegistered<ChatBloc>()) {
+        sl<ChatBloc>().add(const ChatReset());
+      }
       await sl<SupabaseSessionBridge>().clear();
       return;
     }

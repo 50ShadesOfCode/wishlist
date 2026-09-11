@@ -9,12 +9,12 @@ import '../bloc/auth_event.dart';
 import '../bloc/auth_state.dart';
 
 /// Sign-up screen UI. Requires an [AuthBloc] above it in the tree
-/// (provided by [SignUpPage]).
+/// (provided by [SignUpPage]). Post-login navigation is owned by the
+/// go_router auth guard (`refreshListenable`), never by this form.
 class SignUpForm extends StatelessWidget {
-  const SignUpForm({super.key, this.onGoSignIn, this.onSuccess});
+  const SignUpForm({super.key, this.onGoSignIn});
 
   final VoidCallback? onGoSignIn;
-  final VoidCallback? onSuccess;
 
   @override
   Widget build(BuildContext context) {
@@ -23,10 +23,7 @@ class SignUpForm extends StatelessWidget {
       appBar: AppBar(title: Text('sign_up'.tr())),
       body: AppErrorListener<AuthBloc, AuthState>(
         errorOf: (s) => s.error,
-        child: BlocConsumer<AuthBloc, AuthState>(
-          listener: (context, s) {
-            if (s.status == AuthStatus.authenticated) onSuccess?.call();
-          },
+        child: BlocBuilder<AuthBloc, AuthState>(
           builder: (context, state) {
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
@@ -71,8 +68,8 @@ class SignUpForm extends StatelessWidget {
               ),
             ),
           );
-        },
-      ),
+          },
+        ),
       ),
     );
   }

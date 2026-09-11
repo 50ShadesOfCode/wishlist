@@ -2,7 +2,6 @@ import 'package:core/core.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../domain/entities/profile.dart';
 import '../../domain/usecases/profile_usecases.dart';
 import 'profile_event.dart';
 import 'profile_state.dart';
@@ -19,6 +18,7 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
     on<ProfileUpdated>(_onUpdate);
     on<ProfileAvatarPicked>(_onAvatarPicked);
     on<ProfileAvatarRemoved>(_onAvatarRemoved);
+    on<ProfileReset>(_onReset);
   }
 
   final GetProfileUseCase _getProfile;
@@ -64,13 +64,19 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
     ProfileAvatarPicked e,
     Emitter<ProfileState> emit,
   ) async {
+    // No fallback-profile synthesis: uploading before the first load
+    // completes would persist a clobbered `username: 'user'` row. The form
+    // disables avatar picking until the profile is loaded.
+    final current = state.profile;
+    if (current == null) {
+      emit(state.copyWith(isLoading: false, error: 'profile_not_loaded'.tr()));
+      return;
+    }
     emit(state.copyWith(isLoading: true, error: null));
     try {
       final url = await _uploadAvatar(
         UploadAvatarParams(userId: e.userId, filePath: e.filePath),
       );
-      final current =
-          state.profile ?? Profile(userId: e.userId, username: 'user');
       final p = await _updateProfile(current.copyWith(avatarUrl: url));
       emit(state.copyWith(profile: p, isLoading: false));
     } catch (err) {
@@ -92,5 +98,9 @@ class ProfileBloc extends Bloc<ProfileEvent, ProfileState> {
     } catch (err) {
       emit(state.copyWith(isLoading: false, error: err.toString()));
     }
+  }
+
+  void _onReset(ProfileReset e, Emitter<ProfileState> emit) {
+    emit(const ProfileState());
   }
 }

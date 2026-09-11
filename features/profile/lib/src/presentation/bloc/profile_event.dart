@@ -37,3 +37,9 @@ class ProfileAvatarRemoved extends ProfileEvent {
   @override
   List<Object?> get props => [userId];
 }
+
+/// Resets the bloc to its initial state. Dispatched on sign-out so the next
+/// user never sees the previous user's profile.
+class ProfileReset extends ProfileEvent {
+  const ProfileReset();
+}

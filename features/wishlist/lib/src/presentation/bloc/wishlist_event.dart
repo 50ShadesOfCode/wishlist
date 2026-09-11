@@ -39,3 +39,9 @@ class WishlistToggleHide extends WishlistEvent {
   @override
   List<Object?> get props => [itemId, hidden];
 }
+
+/// Resets the bloc to its initial state. Dispatched on sign-out so the next
+/// user never sees the previous user's items.
+class WishlistReset extends WishlistEvent {
+  const WishlistReset();
+}

@@ -42,3 +42,9 @@ class PasswordResetRequested extends AuthEvent {
   const PasswordResetRequested(this.email);
   final String email;
 }
+
+/// One-shot consumption of [AuthState.passwordResetSent]: dispatched after
+/// the confirmation snackbar shows so it never re-fires on rebuilds.
+class PasswordResetConsumed extends AuthEvent {
+  const PasswordResetConsumed();
+}

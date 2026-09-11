@@ -7,15 +7,12 @@ import 'sign_up_form.dart';
 /// Provides the shared [AuthBloc] singleton and renders [SignUpForm].
 /// Keeps BlocProvider wiring out of the router.
 class SignUpPage extends StatelessWidget {
-  const SignUpPage({super.key, this.onGoSignIn, this.onSuccess});
+  const SignUpPage({super.key, this.onGoSignIn});
 
   final VoidCallback? onGoSignIn;
-  final VoidCallback? onSuccess;
 
   @override
   Widget build(BuildContext context) {
-    return ProvideBloc<AuthBloc>(
-      child: SignUpForm(onGoSignIn: onGoSignIn, onSuccess: onSuccess),
-    );
+    return ProvideBloc<AuthBloc>(child: SignUpForm(onGoSignIn: onGoSignIn));
   }
 }

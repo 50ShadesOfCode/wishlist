@@ -26,17 +26,27 @@ class ChatState extends Equatable {
   /// True while the first snapshot of either stream is pending.
   final bool isLoading;
 
+  static const _activeChatIdSentinel = Object();
+
   ChatState copyWith({
     List<ChatThread>? threads,
     List<ChatMessage>? messages,
-    String? activeChatId,
+    Object? activeChatId = _activeChatIdSentinel,
     String? error,
     Set<String>? unreadChatIds,
     bool? isLoading,
+    bool clearActiveChat = false,
   }) => ChatState(
     threads: threads ?? this.threads,
     messages: messages ?? this.messages,
-    activeChatId: activeChatId ?? this.activeChatId,
+    // `activeChatId: null` explicitly clears (same sentinel pattern as
+    // AuthState.user); `clearActiveChat: true` forces the clear without
+    // passing null. Omitted preserves.
+    activeChatId: clearActiveChat
+        ? null
+        : identical(activeChatId, _activeChatIdSentinel)
+        ? this.activeChatId
+        : activeChatId as String?,
     error: error,
     unreadChatIds: unreadChatIds ?? this.unreadChatIds,
     isLoading: isLoading ?? this.isLoading,

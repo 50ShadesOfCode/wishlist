@@ -9,18 +9,13 @@ import '../bloc/auth_event.dart';
 import '../bloc/auth_state.dart';
 
 /// Sign-in screen UI. Requires an [AuthBloc] above it in the tree
-/// (provided by [SignInPage]).
+/// (provided by [SignInPage]). Post-login navigation is owned by the
+/// go_router auth guard (`refreshListenable`), never by this form.
 class SignInForm extends StatefulWidget {
-  const SignInForm({
-    super.key,
-    this.onGoSignUp,
-    this.onGoReset,
-    this.onSuccess,
-  });
+  const SignInForm({super.key, this.onGoSignUp, this.onGoReset});
 
   final VoidCallback? onGoSignUp;
   final VoidCallback? onGoReset;
-  final VoidCallback? onSuccess;
 
   @override
   State<SignInForm> createState() => _SignInFormState();
@@ -36,12 +31,7 @@ class _SignInFormState extends State<SignInForm> {
       appBar: AppBar(title: Text('sign_in'.tr())),
       body: AppErrorListener<AuthBloc, AuthState>(
         errorOf: (s) => s.error,
-        child: BlocConsumer<AuthBloc, AuthState>(
-          listener: (context, s) {
-            if (s.status == AuthStatus.authenticated) {
-              widget.onSuccess?.call();
-            }
-          },
+        child: BlocBuilder<AuthBloc, AuthState>(
           builder: (context, state) {
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
@@ -118,8 +108,8 @@ class _SignInFormState extends State<SignInForm> {
               ),
             ),
           );
-        },
-      ),
+          },
+        ),
       ),
     );
   }
