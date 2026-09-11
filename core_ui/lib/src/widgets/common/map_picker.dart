@@ -9,6 +9,14 @@ import 'app_snack.dart';
 String formatCoords(LatLng p) =>
     '${p.latitude.toStringAsFixed(5)}, ${p.longitude.toStringAsFixed(5)}';
 
+/// Thrown by the caller's `onLocateMe` when location permission is
+/// permanently denied: the only remedy is the system settings. [MapPicker]
+/// surfaces this with a settings affordance (via [onOpenLocationSettings])
+/// instead of a dead-end error toast.
+class LocationSettingsNeeded implements Exception {
+  const LocationSettingsNeeded();
+}
+
 class MapPicker extends StatefulWidget {
   const MapPicker({
     super.key,
@@ -16,6 +24,8 @@ class MapPicker extends StatefulWidget {
     required this.onPicked,
     this.onLocateMe,
     this.onLocateError,
+    this.onOpenLocationSettings,
+    this.settingsLabel,
   });
 
   final LatLng? initial;
@@ -29,6 +39,14 @@ class MapPicker extends StatefulWidget {
 
   /// Shown when [onLocateMe] fails; defaults to a snackbar.
   final ValueChanged<Object>? onLocateError;
+
+  /// Opens the system location settings (implemented by the caller, e.g.
+  /// via geolocator's `openAppSettings`). Used for the permanently-denied
+  /// affordance.
+  final Future<void> Function()? onOpenLocationSettings;
+
+  /// Already-localized label for the settings action button.
+  final String? settingsLabel;
 
   /// Default map center (Tashkent) when no location is picked yet.
   static const defaultCenter = LatLng(41.3111, 69.2406);
@@ -83,7 +101,20 @@ class _MapPickerState extends State<MapPicker> {
       if (widget.onLocateError != null) {
         widget.onLocateError!(e);
       } else if (mounted) {
-        showAppSnack(context, '${'location_failed'.tr()}: $e');
+        // Permanently denied: offer the system settings instead of a
+        // dead-end toast (when the caller wires the affordance).
+        if (e is LocationSettingsNeeded &&
+            widget.onOpenLocationSettings != null) {
+          final openSettings = widget.onOpenLocationSettings!;
+          showAppSnackAction(
+            context,
+            'location_settings'.tr(),
+            actionLabel: widget.settingsLabel ?? 'open_settings'.tr(),
+            onAction: () => openSettings(),
+          );
+        } else {
+          showAppSnack(context, '${'location_failed'.tr()}: $e');
+        }
       }
     } finally {
       if (mounted) setState(() => _locating = false);

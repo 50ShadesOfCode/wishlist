@@ -7,3 +7,19 @@ void showAppSnack(BuildContext context, String message) {
     context,
   ).showSnackBar(SnackBar(content: Text(message)));
 }
+
+/// Snackbar with an action button (e.g. "Open settings" for permanently
+/// denied permissions).
+void showAppSnackAction(
+  BuildContext context,
+  String message, {
+  required String actionLabel,
+  required VoidCallback onAction,
+}) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(message),
+      action: SnackBarAction(label: actionLabel, onPressed: onAction),
+    ),
+  );
+}

@@ -5,6 +5,7 @@ import 'package:chat/chat.dart';
 import 'package:core/core.dart';
 import 'package:core_ui/core_ui.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -29,6 +30,8 @@ class _WishlistAppState extends State<WishlistApp> {
   late final ThemeController _theme;
   StreamSubscription<AuthState>? _authSub;
   StreamSubscription<bool>? _connectivitySub;
+  StreamSubscription<User?>? _firebaseSessionSub;
+  Timer? _reconnectDebounce;
   String? _profileEnsuredFor;
 
   @override
@@ -51,14 +54,35 @@ class _WishlistAppState extends State<WishlistApp> {
         _pendingLaunchTap = tap;
       }
     });
-    // Drain the offline outbox whenever connectivity returns while signed
-    // in (SyncService itself no-ops when offline or already syncing).
-    _connectivitySub = sl<NetworkInfo>().onConnectivityChanged.listen((online) {
-      if (online && _authBloc.state.status == AuthStatus.authenticated) {
-        sl<SyncService>().syncNow();
+    // Expired/revoked session observer: Firebase signs out (or the token
+    // becomes invalid) outside the bloc's control — e.g. password change on
+    // another device, admin revocation. Re-check auth so the guard routes
+    // back to sign-in instead of stranding the user on authed pages.
+    _firebaseSessionSub = FirebaseAuth.instance.authStateChanges().listen((
+      fbUser,
+    ) {
+      if (fbUser == null &&
+          _authBloc.state.status == AuthStatus.authenticated) {
+        _authBloc.add(const AuthChecked());
       }
     });
+    // Drain the offline outbox whenever connectivity returns while signed
+    // in (SyncService itself no-ops when offline or already syncing).
+    // Edges are debounced: radio flaps (tunnel/lift/elevator) would
+    // otherwise trigger a sync storm of full queue drains.
+    _connectivitySub = sl<NetworkInfo>().onConnectivityChanged.listen((online) {
+      _reconnectDebounce?.cancel();
+      if (!online) return;
+      _reconnectDebounce = Timer(reconnectDebounce, () {
+        if (_authBloc.state.status == AuthStatus.authenticated) {
+          sl<SyncService>().syncNow();
+        }
+      });
+    });
   }
+
+  /// Quiet period after a connectivity edge before draining the outbox.
+  static const reconnectDebounce = Duration(seconds: 2);
 
   /// Notification tap that arrived before auth resolved (e.g. killed-app
   /// launch): held until the first authenticated emission, then routed.
@@ -184,8 +208,9 @@ class _WishlistAppState extends State<WishlistApp> {
       if (await sl<NetworkInfo>().isConnected) {
         await sl<SyncService>().syncNow();
       }
-    } catch (_) {
+    } catch (e) {
       // Offline or backend error: retry on next authenticated emission.
+      appLogger.warning('Supabase profile ensure failed: $e');
       _profileEnsuredFor = null;
     }
   }
@@ -202,6 +227,14 @@ class _WishlistAppState extends State<WishlistApp> {
   void dispose() {
     _authSub?.cancel();
     _connectivitySub?.cancel();
+    _firebaseSessionSub?.cancel();
+    _reconnectDebounce?.cancel();
+    // Release the Hive handle held by the outbox (single-handle discipline:
+    // caches are app-lifetime singletons, closed here alongside the root
+    // widget rather than per-operation).
+    if (sl.isRegistered<OutboxService>()) {
+      sl<OutboxService>().dispose();
+    }
     super.dispose();
   }
 

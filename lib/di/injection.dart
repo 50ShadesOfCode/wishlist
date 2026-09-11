@@ -39,6 +39,15 @@ Future<void> configureDependencies() async {
   // Feature modules own their data layer (see register*Module in each
   // package barrel). The app only wires the two cross-feature hooks:
   // chat deletion for item deletes, and new-message notifications.
+  //
+  // GetIt split (do not mix up):
+  // - App code (`lib/`) resolves via this file's `sl` alias.
+  // - Feature code must use `GetIt.instance<X>()` directly: importing the
+  //   app's `sl` alias from a feature package would be a pub dependency
+  //   cycle (features never depend on the app).
+  // - Domain work goes through use-cases (`sl<XUseCase>()`), never
+  //   `sl<XRepository>` — the delete-cascade hook below resolves the chat
+  //   use-case for exactly this reason.
   registerAuthModule(sl);
   registerProfileModule(sl);
   registerChatModule(

@@ -2,6 +2,7 @@ import 'package:core_ui/core_ui.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
+import 'package:go_router/go_router.dart';
 
 /// Change-password screen. Self-contained (local loading/error state,
 /// result via [onChange]); needs no bloc provider.
@@ -28,7 +29,9 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
     try {
       final v = _formKey.currentState!.value;
       await widget.onChange(v['current'] as String, v['next'] as String);
-      if (mounted) Navigator.of(context).pop();
+      // context.pop (not Navigator.pop): this page lives under a
+      // StatefulShellRoute where Navigator.pop would escape the branch.
+      if (mounted) context.pop();
     } catch (e) {
       if (mounted) {
         setState(() => _error = e.toString());

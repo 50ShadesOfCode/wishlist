@@ -116,6 +116,28 @@ class OutboxService extends ChangeNotifier {
     await refresh();
   }
 
+  /// Dead-letter eviction sweep: drops ops that already exhausted
+  /// [maxRetries] (e.g. written by an older build before counting existed
+  /// but since fixed server-side). Returns the evicted count.
+  Future<int> evictDeadLetters() async {
+    var evicted = 0;
+    for (final op in await peekOrdered()) {
+      if (op.retryCount >= maxRetries) {
+        await _cache.delete(op.key);
+        evicted++;
+      }
+    }
+    if (evicted > 0) await refresh();
+    return evicted;
+  }
+
+  /// Releases the held Hive handle (called on app dispose).
+  @override
+  void dispose() {
+    _cache.close();
+    super.dispose();
+  }
+
   /// Records one replay failure; dead-letters (drops with a log line) after
   /// [maxRetries] so a single poison op can't clog the queue forever.
   /// Returns true when the op was dead-lettered.

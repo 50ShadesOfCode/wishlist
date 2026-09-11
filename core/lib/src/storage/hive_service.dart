@@ -1,6 +1,12 @@
 import 'package:hive_ce/hive.dart';
 
 /// Thin wrapper around Hive CE used to cache Supabase payloads.
+///
+/// Single-handle discipline: one [HiveCacheService] per box, held for the
+/// app lifetime and closed once (see [close]) — never open-then-abandon a
+/// box per operation. [clearBox] opens a throwaway handle only because it
+/// runs without an instance (sign-out wipe); prefer the instance method
+/// [clear] when a service is available.
 class HiveCacheService {
   HiveCacheService(this._boxName);
   final String _boxName;
@@ -11,6 +17,19 @@ class HiveCacheService {
     if (_box != null && _box!.isOpen) return _box!;
     _box = await Hive.openBox(_boxName);
     return _box!;
+  }
+
+  /// Releases the held box handle. Idempotent; safe to call on dispose.
+  Future<void> close() async {
+    final box = _box;
+    _box = null;
+    if (box != null && box.isOpen) await box.close();
+  }
+
+  /// Clears the held box without dropping the handle.
+  Future<void> clear() async {
+    final box = await _open();
+    await box.clear();
   }
 
   Future<void> put(String key, Map<String, dynamic> value) async {

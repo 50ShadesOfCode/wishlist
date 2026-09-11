@@ -160,15 +160,17 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             if (t.id == id) {
               try {
                 await notify(t);
-              } catch (_) {
+              } catch (e) {
                 // Notification failures never break the chat flow.
+                appLogger.warning('Chat notify failed: $e');
               }
             }
           }
         }
       }
-    } catch (_) {
-      // Badges are best-effort; ignore.
+    } catch (e) {
+      // Badges are best-effort; logged for field debugging only.
+      appLogger.warning('Chat unread refresh failed: $e');
     }
   }
 

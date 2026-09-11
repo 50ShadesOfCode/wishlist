@@ -159,8 +159,9 @@ class WishlistRepositoryImpl implements WishlistRepository {
       WishlistItemModel? previous;
       try {
         previous = await _remote.fetchById(item.id);
-      } catch (_) {
+      } catch (e) {
         // proceed; diff cleanup is best-effort
+        appLogger.warning('Wishlist update: pre-fetch failed: $e');
       }
       final urls = await _media.resolveImageUrls(item, uploaded);
       final saved = await _remote.update(
@@ -175,8 +176,8 @@ class WishlistRepositoryImpl implements WishlistRepository {
               .where((u) => !urls.contains(u));
           await _media.deleteUrlsBestEffort(removed);
         }
-      } catch (_) {
-        // ignore diff cleanup failures
+      } catch (e) {
+        appLogger.warning('Wishlist update: diff cleanup failed: $e');
       }
       return saved;
     } catch (e) {
@@ -195,15 +196,7 @@ class WishlistRepositoryImpl implements WishlistRepository {
 
     String? ownerId;
     final preCached = await _findCached(itemId);
-    if (preCached != null) {
-      try {
-        ownerId = WishlistItemModel.fromJson(
-          await _cache.get(preCached.$1) ?? const {},
-        ).ownerId;
-      } catch (_) {
-        ownerId = null;
-      }
-    }
+    if (preCached != null) ownerId = preCached.$2.ownerId;
     if (await enqueueOfflineWrite(
       network: _network,
       outbox: _outbox,
@@ -222,8 +215,9 @@ class WishlistRepositoryImpl implements WishlistRepository {
       final previous = await _remote.fetchById(itemId);
       imageUrls = previous?.imageUrls.where(isRemoteUrl).toList() ?? const [];
       ownerId ??= previous?.ownerId;
-    } catch (_) {
+    } catch (e) {
       // proceed with row delete even if the pre-fetch fails
+      appLogger.warning('Wishlist delete: pre-fetch failed: $e');
     }
     final deleted = await (() async {
       try {

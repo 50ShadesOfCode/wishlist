@@ -4,12 +4,14 @@ import 'package:core/core.dart';
 import 'package:core_ui/core_ui.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:profile/profile.dart';
 import 'package:wishlist/wishlist.dart';
 
 import '../di/injection.dart';
 import '../services/sync_service.dart';
+import 'account_deletion.dart';
 import 'auth_guard.dart';
 import 'chat_navigation.dart';
 import 'home_shell.dart';
@@ -175,60 +177,25 @@ GoRouter createRouter(AuthBloc authBloc) {
                   },
                   onLogout: () => authBloc.add(const SignOutRequested()),
                   onDeleteAccount: () async {
-                    // Full cascade (all through use-cases, never repos):
-                    // 1. wishlist rows via DeleteItemUseCase (each deletes
-                    //    its row + images + Firestore chats via the hook),
-                    // 2. subscriptions on both sides,
-                    // 3. remaining Firestore threads,
-                    // 4. the Supabase profile row (+ avatars) via
-                    //    DeleteProfileUseCase (RLS needs the live session,
-                    //    so this runs before the Firebase user delete),
-                    // 5. the Firebase user via the bloc.
-                    // Any backend step failing aborts and keeps the user
-                    // signed in. A `requires-recent-login` Firebase error
-                    // leaves a partial state (data already deleted); the
-                    // message tells the user to re-authenticate and retry.
+                      // Cascade lives in account_deletion.dart (use-cases
+                      // only); the Firebase user goes via the bloc so
+                      // loading/errors surface through AppErrorListener.
+                      // Mounted is re-checked after every await: the user
+                      // may leave the page mid-cascade.
                       final userId = authBloc.state.user?.id;
                       if (userId == null) return;
-                      Future<void> cascade() async {
-                        List<WishlistItem> items = const [];
-                        try {
-                          items = await sl<GetMyItemsUseCase>().call(userId);
-                        } catch (_) {
-                          items = const [];
-                        }
-                        for (final item in items) {
-                          await sl<DeleteItemUseCase>().call(item.id);
-                        }
-                        await sl<DeleteAllSubscriptionsForUserUseCase>().call(
-                          userId,
-                        );
-                        try {
-                          await sl<DeleteThreadsForUserUseCase>().call(userId);
-                        } catch (_) {
-                          // Threads for deleted items are already gone via
-                          // the per-item hook; best-effort remainder.
-                        }
-                        await sl<DeleteProfileUseCase>().call(userId);
-                      }
                       try {
-                        await cascade();
+                        await deleteAccountCascade(userId);
                       } catch (e) {
                         if (context.mounted) {
-                          showAppSnack(context, 'Delete failed: $e');
+                          showAppSnack(context, reauthMessage(e));
                         }
                         return;
                       }
-                      try {
-                        authBloc.add(const DeleteAccountRequested());
-                      } catch (e) {
-                        if (context.mounted) {
-                          showAppSnack(
-                            context,
-                            _reauthMessage(e),
-                          );
-                        }
-                      }
+                      if (!context.mounted) return;
+                      BlocProvider.of<AuthBloc>(
+                        context,
+                      ).add(const DeleteAccountRequested());
                   },
                   onChangePassword: () => context.push('/profile/password'),
                   );
@@ -254,18 +221,6 @@ GoRouter createRouter(AuthBloc authBloc) {
       ),
     ],
   );
-}
-
-/// Firebase demands a fresh credential for account deletion; when the
-/// session is stale the delete throws `requires-recent-login` while data
-/// may already be partially removed. Surface a re-auth prompt instead of a
-/// raw exception string.
-String _reauthMessage(Object e) {
-  final text = e.toString().toLowerCase();
-  if (text.contains('recent-login') || text.contains('recent login')) {
-    return 'delete_reauth'.tr();
-  }
-  return 'Delete failed: $e';
 }
 
 /// Splash held while the initial [AuthChecked] is pending (`unknown`) or the

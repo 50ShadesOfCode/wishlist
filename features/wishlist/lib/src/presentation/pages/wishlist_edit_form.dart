@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -16,6 +17,13 @@ import '../bloc/wishlist_state.dart';
 /// Rejects picked images larger than this (after picker compression) before
 /// they are attached to the wish.
 const maxItemImageBytes = 10 * 1024 * 1024;
+
+/// Maximum images attached to one wish (bounded multi-pick).
+const maxItemImages = 10;
+
+/// Location fix timeout: never hang the locate button indefinitely when GPS
+/// stalls (e.g. indoors).
+const locationTimeout = Duration(seconds: 15);
 
 /// Add/edit wish screen UI. Requires a [WishlistBloc] above it in the tree
 /// (provided by [WishlistEditPage]).
@@ -75,6 +83,9 @@ class _WishlistEditFormState extends State<WishlistEditForm> {
         maxWidth: 1920,
         maxHeight: 1920,
         imageQuality: 85,
+        // Bounded multi-pick: hundreds of full-res images would OOM the
+        // upload loop and DOS the storage bucket.
+        limit: maxItemImages,
       );
     } catch (_) {
       // Permission denial etc.: stay silent, keep current images.
@@ -99,7 +110,9 @@ class _WishlistEditFormState extends State<WishlistEditForm> {
   }
 
   /// Resolves the device position for the map locate button. Throws a
-  /// human-readable message on denial so the picker can report it.
+  /// human-readable message on denial so the picker can report it. A
+  /// permanent denial throws a distinct settings message — the caller
+  /// surfaces it with an affordance to open the system settings.
   Future<LatLng> _locateMe() async {
     if (!await Geolocator.isLocationServiceEnabled()) {
       throw 'location_failed'.tr();
@@ -112,9 +125,14 @@ class _WishlistEditFormState extends State<WishlistEditForm> {
       throw 'location_failed'.tr();
     }
     if (permission == LocationPermission.deniedForever) {
-      throw 'location_failed'.tr();
+      throw const LocationSettingsNeeded();
     }
-    final pos = await Geolocator.getCurrentPosition();
+    final pos = await Geolocator.getCurrentPosition(
+      locationSettings: LocationSettings(timeLimit: locationTimeout),
+    ).timeout(
+      locationTimeout,
+      onTimeout: () => throw 'location_failed'.tr(),
+    );
     return LatLng(pos.latitude, pos.longitude);
   }
 
@@ -167,7 +185,9 @@ class _WishlistEditFormState extends State<WishlistEditForm> {
       return;
     }
     _awaitingResult = false;
-    if (context.mounted) Navigator.of(context).pop();
+    // context.pop (not Navigator.pop): this page lives under a
+    // StatefulShellRoute where Navigator.pop would escape the branch.
+    if (context.mounted) context.pop();
   }
 
   @override
@@ -244,6 +264,10 @@ class _WishlistEditFormState extends State<WishlistEditForm> {
                       initial: _place,
                       onPicked: (p) => setState(() => _place = p),
                       onLocateMe: _locateMe,
+                      onOpenLocationSettings: () async {
+                        await Geolocator.openAppSettings();
+                      },
+                      settingsLabel: 'open_settings'.tr(),
                     ),
                     SwitchListTile(
                       title: Text('hide_from_others'.tr()),

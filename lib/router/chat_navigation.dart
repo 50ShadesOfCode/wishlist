@@ -1,5 +1,6 @@
 import 'package:auth/auth.dart';
 import 'package:chat/chat.dart';
+import 'package:core/core.dart';
 import 'package:core_ui/core_ui.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:go_router/go_router.dart';
@@ -31,7 +32,8 @@ Future<void> openItemChat(
     }
   } catch (e) {
     if (context.mounted) {
-      showAppSnack(context, '${'chat_open_failed'.tr()}: $e');
+      // Mapped message: never leaks `ServerFailure(...)` internals.
+      showAppSnack(context, '${'chat_open_failed'.tr()}: ${describeError(e)}');
     }
   }
 }

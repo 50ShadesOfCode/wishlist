@@ -40,3 +40,8 @@ class NotFoundFailure extends Failure {
 class PermissionFailure extends Failure {
   const PermissionFailure([super.message = 'Permission denied']);
 }
+
+/// Human-readable message for a caught error: the taxonomy message for
+/// [Failure]s (never `ServerFailure(...)` toString internals leaking into
+/// snackbars), raw text otherwise.
+String describeError(Object e) => e is Failure ? e.message : e.toString();

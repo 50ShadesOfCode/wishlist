@@ -74,5 +74,7 @@
   "load_failed": "Couldn't load data",
   "image_too_large": "Image is too large",
   "profile_not_loaded": "Profile isn't loaded yet",
-  "delete_reauth": "Please sign in again, then retry deleting your account"
+  "delete_reauth": "Please sign in again, then retry deleting your account",
+  "location_settings": "Location is disabled. Enable it in settings to use this.",
+  "open_settings": "Open settings"
 }

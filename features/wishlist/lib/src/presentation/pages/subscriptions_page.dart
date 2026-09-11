@@ -1,3 +1,4 @@
+import 'package:core/core.dart';
 import 'package:core_ui/core_ui.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:material_ui/material_ui.dart';
@@ -68,13 +69,15 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
     String name;
     try {
       name = await widget.resolveName(s.targetUserId);
-    } catch (_) {
+    } catch (e) {
+      appLogger.warning('Following: name resolve failed: $e');
       name = s.targetUserId;
     }
     List<WishlistItem> items;
     try {
       items = await widget.onLoadItems(s.targetUserId);
-    } catch (_) {
+    } catch (e) {
+      appLogger.warning('Following: items load failed: $e');
       items = const [];
     }
     return TargetSection(subscription: s, name: name, items: items);
@@ -114,7 +117,10 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
       await _refresh();
     } catch (e) {
       if (mounted) {
-        showAppSnack(context, '${'subscribe_failed'.tr()}: $e');
+        showAppSnack(
+          context,
+          '${'subscribe_failed'.tr()}: ${describeError(e)}',
+        );
       }
     } finally {
       if (mounted) setState(() => _adding = false);
@@ -127,7 +133,7 @@ class _SubscriptionsPageState extends State<SubscriptionsPage> {
       await _refresh();
     } catch (e) {
       if (mounted) {
-        showAppSnack(context, e.toString());
+        showAppSnack(context, describeError(e));
       }
     }
   }
