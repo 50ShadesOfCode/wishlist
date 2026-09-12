@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  analyze-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.x"
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      # Root lockfile is committed: fail fast if a pubspec changed without it.
+      - name: Enforce root lockfile freshness
+        run: flutter pub get --enforce-lockfile
+
+      # Every package resolves independently (each has its own
+      # .dart_tool/package_config.json); root resolution alone leaves
+      # uri_does_not_exist errors in the others.
+      - name: Pub get all packages
+        run: |
+          for p in . core core_ui features/auth features/profile features/wishlist features/chat; do
+            echo "== $p =="
+            (cd "$GITHUB_WORKSPACE/$p" && flutter pub get)
+          done
+
+      - name: Analyze all packages
+        run: |
+          for p in . core core_ui features/auth features/profile features/wishlist features/chat; do
+            echo "== $p =="
+            (cd "$GITHUB_WORKSPACE/$p" && flutter analyze)
+          done
+
+      - name: Test all packages
+        run: |
+          for p in . core core_ui features/auth features/profile features/wishlist features/chat; do
+            echo "== $p =="
+            (cd "$GITHUB_WORKSPACE/$p" && flutter test)
+          done
