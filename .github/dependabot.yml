@@ -1,0 +1,53 @@
+# Weekly dependency updates for the app and each nested package.
+# Every PR runs the full CI (analyze + test in all 7 packages).
+version: 2
+updates:
+  - package-ecosystem: pub
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels: [dependencies]
+  - package-ecosystem: pub
+    directory: /core
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels: [dependencies]
+  - package-ecosystem: pub
+    directory: /core_ui
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels: [dependencies]
+  - package-ecosystem: pub
+    directory: /features/auth
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels: [dependencies]
+  - package-ecosystem: pub
+    directory: /features/profile
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels: [dependencies]
+  - package-ecosystem: pub
+    directory: /features/wishlist
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels: [dependencies]
+  - package-ecosystem: pub
+    directory: /features/chat
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels: [dependencies]
