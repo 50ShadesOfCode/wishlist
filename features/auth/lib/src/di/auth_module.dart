@@ -1,7 +1,6 @@
 import 'package:core/core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get_it/get_it.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 
 import '../data/datasources/auth_local_ds.dart';
 import '../data/datasources/auth_remote_ds.dart';
@@ -22,7 +21,7 @@ void _reg<T extends Object>(
 /// app-level [configureDependencies]; keeps data classes out of the app.
 void registerAuthModule(GetIt sl) {
   sl.registerLazySingleton<AuthRemoteDataSource>(
-    () => AuthRemoteDataSource(FirebaseAuth.instance, GoogleSignIn()),
+    () => AuthRemoteDataSource(FirebaseAuth.instance),
   );
   sl.registerLazySingleton<AuthLocalDataSource>(
     () => AuthLocalDataSource(

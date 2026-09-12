@@ -1,6 +1,5 @@
 import 'package:core/core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 
 import '../models/user_model.dart';
 import 'auth_social_ds.dart';
@@ -9,8 +8,11 @@ import 'auth_social_ds.dart';
 /// email/password flows live here, Google/Apple in [SocialAuthDataSource].
 /// Supabase is used for DB only.
 class AuthRemoteDataSource {
-  AuthRemoteDataSource(this._auth, GoogleSignIn googleSignIn)
-    : _social = SocialAuthDataSource(_auth, googleSignIn);
+  AuthRemoteDataSource(this._auth, {String? googleServerClientId})
+    : _social = SocialAuthDataSource(
+        _auth,
+        googleServerClientId: googleServerClientId,
+      );
   final FirebaseAuth _auth;
   final SocialAuthDataSource _social;
 
